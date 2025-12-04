@@ -3,8 +3,8 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
-import { BookingWithRide, Coordinates, Ride } from '@/types';
-import { Loader2, Phone, MessageSquare, ShieldCheck, MapPin, Navigation, Share2, AlertTriangle, ArrowLeft, Clock, User, X } from 'lucide-react';
+import { BookingWithRide, Coordinates, Ride, Message } from '@/types';
+import { Loader2, Phone, MessageSquare, ShieldCheck, MapPin, Navigation, Share2, AlertTriangle, ArrowLeft, Clock, User, X, CheckCircle } from 'lucide-react';
 import { APP_CONFIG } from '@/lib/constants';
 import { format, addMinutes } from 'date-fns';
 import dynamic from 'next/dynamic';
@@ -12,8 +12,8 @@ import { getRoute, searchLocation } from '@/lib/osm';
 import { useToast } from '@/components/ui/ToastProvider';
 import ChatModal from '@/components/ChatModal';
 import Modal from '@/components/ui/Modal';
+import ReviewModal from '@/components/ReviewModal';
 
-// Extend the Ride type locally to include the new DB columns until types/index.ts is updated
 interface ExtendedRide extends Ride {
   origin_lat?: number;
   origin_lng?: number;
@@ -21,6 +21,7 @@ interface ExtendedRide extends Ride {
   destination_lng?: number;
   current_lat?: number;
   current_lng?: number;
+  driver_arrived?: boolean;
 }
 
 interface ExtendedBooking extends Omit<BookingWithRide, 'rides'> {
@@ -51,6 +52,8 @@ function TrackContent() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [sosModalOpen, setSosModalOpen] = useState(false);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     if (!bookingId) {
@@ -59,13 +62,22 @@ function TrackContent() {
     }
 
     let realtimeChannel: any;
+    let chatChannel: any;
 
     const fetchBookingAndSetupRealtime = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if(user) setCurrentUser(user);
+        if(user) {
+            setCurrentUser(user);
+            const { count } = await supabase
+                .from('messages')
+                .select('*', { count: 'exact', head: true })
+                .eq('booking_id', bookingId)
+                .eq('is_read', false)
+                .neq('sender_id', user.id);
+            if (count) setUnreadCount(count);
+        }
 
-        // 1. Fetch initial booking data
         const { data, error } = await supabase
           .from('bookings')
           .select(`
@@ -73,6 +85,7 @@ function TrackContent() {
             rides (
               *,
               profiles (
+                id,
                 full_name,
                 phone_number,
                 is_verified,
@@ -93,7 +106,7 @@ function TrackContent() {
             const ride = bookingData.rides;
             setBooking(bookingData);
 
-            // 2. Resolve Coordinates (DB preferred, fallback to Geocoding)
+            // --- Geolocation Logic ---
             let pickupCoords: Coordinates | null = null;
             let dropoffCoords: Coordinates | null = null;
 
@@ -119,18 +132,20 @@ function TrackContent() {
                 driver: driverCoords
             });
 
-            // 3. Calculate Route
             if (pickupCoords && dropoffCoords) {
                 const path = await getRoute(pickupCoords, dropoffCoords);
                 if (path) setRoute(path);
             }
 
-            // 4. Set Status
-            if (ride?.status === 'active') setStatus('Driver is on the way');
-            else if (ride?.status === 'scheduled') setStatus('Ride Scheduled');
-            else setStatus(ride?.status || 'Unknown');
+            // --- Initial Status ---
+            updateStatusText(ride);
 
-            // 5. Setup Realtime Subscription for Driver Location
+            // Check if already completed
+            if (ride.status === 'completed') {
+                setReviewModalOpen(true);
+            }
+
+            // --- Realtime Subscription ---
             if (ride?.id) {
                 realtimeChannel = supabase.channel(`ride-tracking-${ride.id}`)
                 .on(
@@ -143,16 +158,41 @@ function TrackContent() {
                     },
                     (payload: any) => {
                         const newRide = payload.new as ExtendedRide;
+                        
+                        // Update Location
                         if (newRide.current_lat && newRide.current_lng) {
                             setCoords(prev => ({
                                 ...prev,
                                 driver: { lat: newRide.current_lat!, lng: newRide.current_lng! }
                             }));
                         }
+
+                        // Handle Status Changes
+                        updateStatusText(newRide);
+                        
+                        // Check for completion
+                        if (newRide.status === 'completed') {
+                            addToast('Trip completed!', 'success');
+                            setReviewModalOpen(true);
+                        }
                     }
                 )
                 .subscribe();
             }
+
+            chatChannel = supabase.channel(`chat-listener-${bookingId}`)
+                .on(
+                    'postgres_changes',
+                    { event: 'INSERT', schema: 'public', table: 'messages', filter: `booking_id=eq.${bookingId}` },
+                    (payload) => {
+                        const newMsg = payload.new as Message;
+                        if (currentUser && newMsg.sender_id !== currentUser.id && !isChatOpen) {
+                            setUnreadCount(prev => prev + 1);
+                            addToast('New message from driver', 'info');
+                        }
+                    }
+                )
+                .subscribe();
         }
       } catch (e) {
         console.error(e);
@@ -166,34 +206,40 @@ function TrackContent() {
 
     return () => {
         if (realtimeChannel) supabase.removeChannel(realtimeChannel);
+        if (chatChannel) supabase.removeChannel(chatChannel);
     };
-  }, [bookingId, supabase, router, addToast]);
+  }, [bookingId, supabase, router, addToast, isChatOpen, currentUser]);
 
-  // --- Interaction Handlers ---
+  useEffect(() => {
+    if (isChatOpen) setUnreadCount(0);
+  }, [isChatOpen]);
+
+  // Helper to update status UI
+  const updateStatusText = (ride: ExtendedRide) => {
+      if (ride.status === 'completed') setStatus('Trip Completed');
+      else if (ride.status === 'active') setStatus('Trip in Progress');
+      else if (ride.driver_arrived) {
+          setStatus('Driver Arrived');
+          addToast('Driver has arrived at pickup location', 'success');
+      }
+      else if (ride.status === 'scheduled') setStatus('Ride Scheduled');
+      else setStatus(ride.status || 'Unknown');
+  };
 
   const handleCall = () => {
     const phone = booking?.rides?.profiles?.phone_number;
-    if (phone) {
-        window.open(`tel:${phone}`, '_self');
-    } else {
-        addToast('Driver phone number not available', 'error');
-    }
+    if (phone) window.open(`tel:${phone}`, '_self');
+    else addToast('Driver phone number not available', 'error');
   };
 
   const handleShare = async () => {
     const shareData = {
         title: 'Track my Veluxeride',
-        text: `I'm on my way from ${booking?.rides?.origin} to ${booking?.rides?.destination}. Track my ride here:`,
+        text: `I'm on my way from ${booking?.rides?.origin} to ${booking?.rides?.destination}.`,
         url: window.location.href,
     };
-
     if (navigator.share) {
-        try {
-            await navigator.share(shareData);
-            addToast('Ride link shared', 'success');
-        } catch (err) {
-            console.log('Error sharing:', err);
-        }
+        try { await navigator.share(shareData); } catch (err) {}
     } else {
         navigator.clipboard.writeText(window.location.href);
         addToast('Link copied to clipboard', 'info');
@@ -201,9 +247,7 @@ function TrackContent() {
   };
 
   const handleEmergency = () => {
-    // Log emergency in DB (optional logic could be added here)
-    addToast('SOS Alert Sent! Support team has been notified.', 'error');
-    // Simulate call to emergency services (e.g., 112 in Nigeria/EU or 911)
+    addToast('SOS Alert Sent!', 'error');
     window.open('tel:112', '_self');
     setSosModalOpen(false);
   };
@@ -245,7 +289,6 @@ function TrackContent() {
             
             {/* Status Card */}
             <div className="bg-black text-white p-6 rounded-3xl relative overflow-hidden shadow-xl">
-               <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
                <div className="relative z-10">
                   <div className="flex justify-between items-start mb-4">
                      <div>
@@ -260,9 +303,6 @@ function TrackContent() {
                   <div className="w-full bg-white/20 h-1 rounded-full overflow-hidden">
                      <div className="bg-white h-full w-[45%] animate-pulse"></div>
                   </div>
-                  <p className="text-right text-xs text-slate-400 mt-2">
-                    {eta ? `Arriving by ${format(addMinutes(new Date(), eta), 'h:mm a')}` : 'Calculating arrival...'}
-                  </p>
                </div>
             </div>
 
@@ -276,11 +316,6 @@ function TrackContent() {
                      ) : (
                         <div className="w-full h-full flex items-center justify-center text-slate-400"><User className="w-6 h-6"/></div>
                      )}
-                     {driver?.is_verified && (
-                        <div className="absolute bottom-0 right-0 bg-white p-0.5 rounded-full">
-                           <ShieldCheck className="w-4 h-4 text-green-500 fill-current"/>
-                        </div>
-                     )}
                   </div>
                   <div className="flex-1">
                      <h4 className="font-bold text-slate-900 text-lg">{driver?.full_name || 'Unassigned'}</h4>
@@ -292,16 +327,16 @@ function TrackContent() {
                       <div className="flex gap-2">
                          <button 
                            onClick={() => setIsChatOpen(true)}
-                           className="p-3 bg-white border border-slate-200 rounded-full hover:bg-slate-100 transition shadow-sm text-slate-900"
-                           title="Message Driver"
+                           className="relative p-3 bg-white border border-slate-200 rounded-full hover:bg-slate-100 transition shadow-sm text-slate-900"
                          >
                             <MessageSquare className="w-5 h-5"/>
+                            {unreadCount > 0 && (
+                                <div className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center animate-bounce">
+                                    {unreadCount}
+                                </div>
+                            )}
                          </button>
-                         <button 
-                           onClick={handleCall}
-                           className="p-3 bg-black text-white rounded-full hover:bg-slate-800 transition shadow-lg"
-                           title="Call Driver"
-                         >
+                         <button onClick={handleCall} className="p-3 bg-black text-white rounded-full hover:bg-slate-800 transition shadow-lg">
                             <Phone className="w-5 h-5"/>
                          </button>
                       </div>
@@ -312,7 +347,6 @@ function TrackContent() {
             {/* Trip Details */}
             <div className="space-y-6 relative pl-4">
                 <div className="absolute left-[19px] top-2 bottom-4 w-0.5 bg-slate-200"></div>
-                
                 <div className="relative z-10 flex gap-4 items-start">
                    <div className="w-3 h-3 bg-black rounded-full ring-4 ring-white shadow-sm mt-1.5 shrink-0"></div>
                    <div>
@@ -320,7 +354,6 @@ function TrackContent() {
                       <p className="font-bold text-slate-900">{booking.rides.origin}</p>
                    </div>
                 </div>
-
                 <div className="relative z-10 flex gap-4 items-start">
                    <div className="w-3 h-3 bg-slate-900 rounded-sm ring-4 ring-white shadow-sm mt-1.5 shrink-0"></div>
                    <div>
@@ -332,36 +365,27 @@ function TrackContent() {
 
             {/* Safety Actions */}
             <div className="grid grid-cols-2 gap-4">
-               <button 
-                 onClick={handleShare}
-                 className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 transition border border-slate-100"
-               >
+               <button onClick={handleShare} className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 transition border border-slate-100">
                   <Share2 className="w-6 h-6 text-slate-900"/>
                   <span className="text-xs font-bold text-slate-600">Share Trip</span>
                </button>
-               <button 
-                 onClick={() => setSosModalOpen(true)}
-                 className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-red-50 hover:bg-red-100 transition border border-red-100"
-               >
+               <button onClick={() => setSosModalOpen(true)} className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-red-50 hover:bg-red-100 transition border border-red-100">
                   <AlertTriangle className="w-6 h-6 text-red-600"/>
                   <span className="text-xs font-bold text-red-600">Emergency</span>
                </button>
             </div>
-
          </div>
       </div>
 
-      {/* Chat Modal */}
+      {/* Modals */}
       {isChatOpen && currentUser && bookingId && (
-        <ChatModal 
-          bookingId={bookingId}
-          driverName={driver?.full_name || 'Driver'}
-          currentUserId={currentUser.id}
-          onClose={() => setIsChatOpen(false)}
-        />
+        <ChatModal bookingId={bookingId} driverName={driver?.full_name || 'Driver'} currentUserId={currentUser.id} onClose={() => setIsChatOpen(false)} />
       )}
 
-      {/* SOS Confirmation Modal */}
+      {reviewModalOpen && bookingId && driver && (
+        <ReviewModal rideId={booking.rides.id} driverId={driver.id} driverName={driver.full_name} driverAvatar={driver.avatar_url} onClose={() => setReviewModalOpen(false)} />
+      )}
+
       <Modal isOpen={sosModalOpen} onClose={() => setSosModalOpen(false)} title="Emergency SOS">
         <div className="space-y-6 text-center">
           <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto">
@@ -369,23 +393,11 @@ function TrackContent() {
           </div>
           <div>
             <h3 className="text-lg font-bold text-slate-900 mb-2">Are you in danger?</h3>
-            <p className="text-slate-600 text-sm">
-              This will trigger an SOS alert to our support team and open the dialer for local emergency services (112).
-            </p>
+            <p className="text-slate-600 text-sm">This will trigger an SOS alert and open the dialer for emergency services.</p>
           </div>
           <div className="flex gap-3">
-            <button 
-              onClick={() => setSosModalOpen(false)} 
-              className="flex-1 py-3 border border-slate-200 rounded-xl font-bold hover:bg-slate-50 transition"
-            >
-              Cancel
-            </button>
-            <button 
-              onClick={handleEmergency}
-              className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition"
-            >
-              CALL SOS
-            </button>
+            <button onClick={() => setSosModalOpen(false)} className="flex-1 py-3 border border-slate-200 rounded-xl font-bold hover:bg-slate-50 transition">Cancel</button>
+            <button onClick={handleEmergency} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition">CALL SOS</button>
           </div>
         </div>
       </Modal>

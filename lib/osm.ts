@@ -2,18 +2,33 @@ import { Coordinates } from '@/types';
 
 // 1. Search for an address (Geocoding) using Nominatim
 export async function searchLocation(query: string): Promise<Coordinates | null> {
+  if (!query) return null;
+
   try {
     const response = await fetch(
       `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
         query
-      )}&limit=1&countrycodes=ng` // Limiting to Nigeria
+      )}&limit=1&countrycodes=ng`, // Limiting to Nigeria
+      {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      }
     );
+    
+    if (!response.ok) {
+        console.warn(`Nominatim API returned error: ${response.status}`);
+        return null;
+    }
+
     const data = await response.json();
     if (data && data.length > 0) {
       return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
     }
     return null;
   } catch (error) {
+    // Gracefully handle network errors (e.g. blocked by extensions)
     console.error('Error searching location:', error);
     return null;
   }
@@ -21,11 +36,15 @@ export async function searchLocation(query: string): Promise<Coordinates | null>
 
 // 2. Get Route between two points using OSRM
 export async function getRoute(start: Coordinates, end: Coordinates): Promise<[number, number][] | null> {
+  if (!start || !end) return null;
+
   try {
     // OSRM expects: longitude,latitude
     const url = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
     
     const response = await fetch(url);
+    if (!response.ok) return null;
+
     const data = await response.json();
     
     if (data.routes && data.routes.length > 0) {
@@ -45,8 +64,16 @@ export async function getRoute(start: Coordinates, end: Coordinates): Promise<[n
 export async function reverseGeocode(lat: number, lng: number): Promise<string> {
   try {
     const response = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
+      {
+        headers: {
+            'Accept': 'application/json'
+        }
+      }
     );
+    
+    if (!response.ok) return "Pinned Location";
+
     const data = await response.json();
     // Return the display name, prefering the first part (usually street/place name)
     // You can adjust this to return data.display_name for the full address

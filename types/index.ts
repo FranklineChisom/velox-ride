@@ -129,3 +129,12 @@ export interface SupportTicket {
   status: 'open' | 'in_progress' | 'resolved' | 'closed';
   created_at: string;
 }
+
+export interface Message {
+  id: string;
+  booking_id: string;
+  sender_id: string;
+  content: string;
+  is_read: boolean;
+  created_at: string;
+}
