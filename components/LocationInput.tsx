@@ -1,12 +1,12 @@
 'use client';
 import { useState, useRef } from 'react';
-import { MapPin, X, Navigation } from 'lucide-react';
+import { MapPin, X, Navigation, Loader2 } from 'lucide-react';
 import { Suggestion, Coordinates } from '@/types';
 import dynamic from 'next/dynamic';
 
 const LeafletMap = dynamic(() => import('@/components/Map'), { 
   ssr: false,
-  loading: () => <div className="h-64 w-full bg-slate-50 animate-pulse flex items-center justify-center">Loading Map...</div>
+  loading: () => <div className="h-64 w-full bg-slate-50 animate-pulse flex items-center justify-center text-slate-400">Loading Map...</div>
 });
 
 interface Props {
@@ -21,6 +21,7 @@ export default function LocationInput({ label, placeholder, value, onChange, req
   const [showMap, setShowMap] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [coords, setCoords] = useState<Coordinates | undefined>(undefined);
+  const [loadingLoc, setLoadingLoc] = useState(false);
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
   const fetchSuggestions = async (input: string) => {
@@ -53,11 +54,12 @@ export default function LocationInput({ label, placeholder, value, onChange, req
 
   const handleMapSelect = async (c: Coordinates) => {
     setCoords(c);
-    // Reverse geocode
+    // Reverse geocode to get address string
     try {
       const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${c.lat}&lon=${c.lng}`);
       const data = await res.json();
-      onChange(data.display_name?.split(',')[0] || "Pinned Location", c);
+      const addressName = data.display_name?.split(',')[0] || "Pinned Location";
+      onChange(addressName, c);
     } catch {
       onChange("Pinned Location", c);
     }
@@ -70,14 +72,18 @@ export default function LocationInput({ label, placeholder, value, onChange, req
       return;
     }
 
+    setLoadingLoc(true);
     navigator.geolocation.getCurrentPosition(async (position) => {
       const c = { 
         lat: position.coords.latitude, 
         lng: position.coords.longitude 
       };
-      handleMapSelect(c);
+      // Use map select logic to reverse geocode and set
+      await handleMapSelect(c);
+      setLoadingLoc(false);
     }, () => {
-      alert("Unable to retrieve your location.");
+      alert("Unable to retrieve your location. Check permissions.");
+      setLoadingLoc(false);
     });
   };
 
@@ -96,10 +102,11 @@ export default function LocationInput({ label, placeholder, value, onChange, req
           <button 
             type="button" 
             onClick={handleCurrentLocation}
-            className="p-1.5 text-slate-400 hover:text-black hover:bg-slate-100 rounded-lg transition"
+            disabled={loadingLoc}
+            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
             title="Use Current Location"
           >
-            <Navigation className="w-4 h-4"/>
+            {loadingLoc ? <Loader2 className="w-4 h-4 animate-spin"/> : <Navigation className="w-4 h-4"/>}
           </button>
           <button 
             type="button" 
@@ -136,7 +143,7 @@ export default function LocationInput({ label, placeholder, value, onChange, req
                />
             </div>
             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] bg-black text-white px-6 py-2 rounded-full text-sm font-bold shadow-lg pointer-events-none">
-              Tap anywhere to set location
+              Tap map to confirm location
             </div>
           </div>
         </div>

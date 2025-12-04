@@ -4,7 +4,6 @@ export const APP_CONFIG = {
   name: 'Veluxeride',
   currency: '₦',
   defaultCenter: { lat: 9.0765, lng: 7.3986 }, // Abuja
-  // Safely access env var or fall back to empty string
   paystackPublicKey: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || '', 
 };
 
@@ -42,8 +41,6 @@ export const TEXT_CONTENT = {
   copyright: "© 2025 Veluxeride Nigeria. All rights reserved.",
 };
 
-// --- Navigation Structures ---
-
 export const NAV_LINKS = {
   main: [
     { label: 'Ride', href: '/ride' },
@@ -67,7 +64,6 @@ export const NAV_LINKS = {
   ],
 };
 
-// Passenger Dashboard Nav
 export const PASSENGER_NAV = [
   { label: 'Home', href: '/passenger', icon: 'Home' },
   { label: 'My Trips', href: '/passenger/trips', icon: 'Clock' },
@@ -76,7 +72,6 @@ export const PASSENGER_NAV = [
   { label: 'Support', href: '/passenger/support', icon: 'HelpCircle' },
 ];
 
-// Driver Dashboard Nav
 export const DRIVER_NAV = [
   { label: 'Dashboard', href: '/driver', icon: 'Home' },
   { label: 'Trips', href: '/driver/trips', icon: 'Map' },
@@ -84,21 +79,18 @@ export const DRIVER_NAV = [
   { label: 'Settings', href: '/driver/settings', icon: 'Settings' },
 ];
 
-// Employee/Staff Nav
 export const STAFF_NAV = [
   { label: 'Overview', href: '/staff', icon: 'LayoutDashboard' },
   { label: 'User Support', href: '/staff/users', icon: 'Users' },
   { label: 'Ride Monitor', href: '/staff/rides', icon: 'Activity' },
 ];
 
-// Manager Nav
 export const MANAGER_NAV = [
   { label: 'Dashboard', href: '/manager', icon: 'LayoutDashboard' },
   { label: 'User Management', href: '/manager', icon: 'Users' },
   { label: 'Ride Oversight', href: '/manager/rides', icon: 'Activity' },
 ];
 
-// Superadmin Nav
 export const ADMIN_NAV = [
   { label: 'Master View', href: '/admin', icon: 'Shield' },
   { label: 'Financials', href: '/admin/finance', icon: 'BarChart' },

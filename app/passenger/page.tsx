@@ -29,7 +29,7 @@ export default function PassengerHome() {
   const [coords, setCoords] = useState<{ pickup?: Coordinates; dropoff?: Coordinates }>({});
   const [mapMode, setMapMode] = useState<'pickup' | 'dropoff' | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [activeField, setActiveField] = useState<'origin' | 'destination' | null>(null);
+  const [activeField, setActiveField] = useState<'origin' | 'destination' | null>(null); // Track focused field
   const [isTyping, setIsTyping] = useState(false);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [route, setRoute] = useState<[number, number][] | undefined>(undefined);
@@ -68,7 +68,14 @@ export default function PassengerHome() {
 
     function handleClickOutside(event: MouseEvent) {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
-        setActiveField(null);
+        // Do NOT set activeField to null here if you want selection to work after clicking outside.
+        // Or handle it carefully. For now, let's keep it to close dropdowns but maybe retain "last active" if needed.
+        // Actually, clearing it is standard for dropdowns, but for the "favorites click" to work,
+        // we need to know which field was last focused or default to one.
+        // For this specific request, we won't clear it on outside click immediately to allow "click then select favorite".
+        // Instead, we might just close the suggestions list.
+        setSuggestions([]); 
+        // setActiveField(null); // Commented out to allow external clicks (like on favorites) to use the last active field.
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -106,22 +113,29 @@ export default function PassengerHome() {
 
   const handleInputChange = (field: 'origin' | 'destination', value: string) => {
     setQuery(prev => ({ ...prev, [field]: value }));
-    setActiveField(field);
+    // setActiveField(field); // Already set by onFocus
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => { fetchSuggestions(value); }, 500);
   };
 
   const handleSuggestionSelect = (suggestion: Suggestion) => {
+    if (!activeField) return; // Should ideally always have one active if using this list
     const newCoords = { lat: parseFloat(suggestion.lat), lng: parseFloat(suggestion.lon) };
     const name = suggestion.display_name.split(',')[0];
-    setQuery(prev => ({ ...prev, [activeField!]: name }));
+    
+    setQuery(prev => ({ ...prev, [activeField]: name }));
+    
     if (activeField === 'origin') setCoords(prev => ({ ...prev, pickup: newCoords }));
     else setCoords(prev => ({ ...prev, dropoff: newCoords }));
+    
     setSuggestions([]);
-    setActiveField(null);
+    // setActiveField(null); // Keep focus flow natural
   };
 
   const handleHistorySelect = (item: SearchHistoryItem) => {
+    // History usually implies a full trip (A to B), so we might want to populate both?
+    // Or if it's just a location, populate the active field.
+    // The current type has origin_name/dest_name. Let's assume it populates both for a full "Rebook".
     setQuery({ origin: item.origin_name || '', destination: item.destination_name });
     if(item.origin_lat && item.origin_lng && item.destination_lat && item.destination_lng){
         setCoords({
@@ -130,7 +144,23 @@ export default function PassengerHome() {
         });
     }
     setSuggestions([]);
-    setActiveField(null);
+    setActiveField(null); // Done
+  };
+
+  const handleSavedPlaceSelect = (place: SavedPlace) => {
+    // Use the currently active field (default to destination if none is explicitly active/focused)
+    const targetField = activeField || 'destination'; 
+    
+    setQuery(prev => ({ ...prev, [targetField]: place.address }));
+    
+    if (place.lat && place.lng) {
+      const newCoords = { lat: place.lat, lng: place.lng };
+      if (targetField === 'origin') {
+        setCoords(prev => ({ ...prev, pickup: newCoords }));
+      } else {
+        setCoords(prev => ({ ...prev, dropoff: newCoords }));
+      }
+    }
   };
 
   const handleCurrentLocation = () => {
@@ -212,7 +242,7 @@ export default function PassengerHome() {
                      onFocus={() => setActiveField('origin')}
                      onChange={(e) => handleInputChange('origin', e.target.value)}
                      placeholder="Pickup location"
-                     className="w-full bg-slate-50 p-3 pl-10 rounded-xl font-medium text-slate-900 outline-none focus:ring-2 focus:ring-black transition text-sm"
+                     className={`w-full bg-slate-50 p-3 pl-10 rounded-xl font-medium text-slate-900 outline-none transition text-sm ${activeField === 'origin' ? 'ring-2 ring-black bg-white' : ''}`}
                    />
                    <div className="absolute right-2 top-2 flex gap-1">
                      <button onClick={handleCurrentLocation} className="p-1.5 text-slate-400 hover:text-black hover:bg-slate-200 rounded-lg transition">{loadingLocation ? <Loader2 className="w-4 h-4 animate-spin"/> : <Navigation className="w-4 h-4" />}</button>
@@ -228,7 +258,7 @@ export default function PassengerHome() {
                      onFocus={() => setActiveField('destination')}
                      onChange={(e) => handleInputChange('destination', e.target.value)}
                      placeholder="Where to?"
-                     className="w-full bg-slate-50 p-3 pl-10 rounded-xl font-medium text-slate-900 outline-none focus:ring-2 focus:ring-black transition text-sm"
+                     className={`w-full bg-slate-50 p-3 pl-10 rounded-xl font-medium text-slate-900 outline-none transition text-sm ${activeField === 'destination' ? 'ring-2 ring-black bg-white' : ''}`}
                    />
                    <button onClick={() => setMapMode('dropoff')} className="absolute right-3 top-2 p-1.5 text-slate-400 hover:text-black hover:bg-slate-200 rounded-lg transition"><MapPin className="w-4 h-4"/></button>
                 </div>
@@ -265,10 +295,11 @@ export default function PassengerHome() {
             
             <div className="space-y-3">
               {savedPlaces.length > 0 ? savedPlaces.map(place => (
-                <div key={place.id} onClick={() => {
-                    setQuery(prev => ({...prev, destination: place.address}));
-                    if(place.lat && place.lng) setCoords(prev => ({...prev, dropoff: {lat: place.lat!, lng: place.lng!}}));
-                }} className="flex items-center gap-4 p-3 hover:bg-slate-50 rounded-xl cursor-pointer transition group border border-transparent hover:border-slate-100">
+                <div 
+                  key={place.id} 
+                  onClick={() => handleSavedPlaceSelect(place)} // Updated handler
+                  className="flex items-center gap-4 p-3 hover:bg-slate-50 rounded-xl cursor-pointer transition group border border-transparent hover:border-slate-100"
+                >
                   <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-600 group-hover:bg-white group-hover:shadow-sm">
                     {place.label === 'Home' ? <HomeIcon className="w-5 h-5" /> : <Briefcase className="w-5 h-5" />}
                   </div>

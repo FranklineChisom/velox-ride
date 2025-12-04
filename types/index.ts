@@ -37,7 +37,7 @@ export interface Review {
   rating: number;
   comment: string;
   created_at: string;
-  profiles?: Profile; // reviewer details
+  profiles?: Profile;
 }
 
 export interface Ride {
