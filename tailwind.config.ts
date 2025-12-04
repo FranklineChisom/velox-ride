@@ -8,17 +8,22 @@ const config: Config = {
   ],
   theme: {
     extend: {
-      backgroundImage: {
-        'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'gradient-conic':
-          'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
-      },
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
+        sans: ['var(--font-jakarta)', 'sans-serif'],
+      },
+      colors: {
+        velox: {
+          dark: '#020617',     // Slate 950 - For heavy backgrounds
+          navy: '#0F172A',     // Slate 900 - For primary text
+          teal: '#0F766E',     // Teal 700 - A darker, richer teal
+          gold: '#C29B40',     // Muted metallic gold
+          light: '#F8FAFC',    // Slate 50 - Crisp background
+        }
       },
       animation: {
-        'fade-in': 'fadeIn 0.5s ease-out',
-        'slide-up': 'slideUp 0.5s ease-out',
+        'fade-in': 'fadeIn 0.6s ease-out',
+        'slide-up': 'slideUp 0.6s ease-out',
+        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
       },
       keyframes: {
         fadeIn: {

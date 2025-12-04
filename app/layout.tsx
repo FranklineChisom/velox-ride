@@ -1,12 +1,17 @@
 import './globals.css';
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Plus_Jakarta_Sans } from 'next/font/google';
 
-const inter = Inter({ subsets: ['latin'] });
+// Switching to Plus Jakarta Sans for a more modern, premium geometric feel
+const jakarta = Plus_Jakarta_Sans({ 
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-jakarta',
+});
 
 export const metadata: Metadata = {
-  title: 'VeloxRide | Smart Urban Mobility',
-  description: 'Schedule rides, split fares, and travel comfortably in Abuja and Lagos.',
+  title: 'VeloxRide | Elite Urban Mobility',
+  description: 'Experience the premium standard of scheduled ride-sharing in Nigeria.',
 };
 
 export default function RootLayout({
@@ -15,9 +20,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    // Added suppressHydrationWarning to ignore browser extension attributes
-    <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>{children}</body>
+    <html lang="en" suppressHydrationWarning className={jakarta.variable}>
+      <body className={`${jakarta.className} antialiased bg-slate-50 text-slate-900 selection:bg-teal-500 selection:text-white`}>
+        {children}
+      </body>
     </html>
   );
 }
