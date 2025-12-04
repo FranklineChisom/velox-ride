@@ -2,7 +2,7 @@
 
 export default function PressPage() {
   return (
-    <div className="pt-24 pb-12 w-[90%] md:w-[85%] mx-auto max-w-4xl">
+    <div className="pt-32 pb-20 w-[90%] md:w-[85%] mx-auto max-w-4xl min-h-screen">
       <h1 className="text-5xl font-bold mb-8 text-slate-900">VeloxRide in the News</h1>
       <p className="text-xl text-slate-500 mb-16 leading-relaxed">
         Read about our latest milestones, product launches, and company updates.
