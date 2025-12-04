@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { 
   Car, 
   Users, 
@@ -8,24 +9,33 @@ import {
   Wallet, 
   Calendar, 
   Briefcase, 
-  Map, 
+  Map as MapIcon, 
   Smartphone,
-  CheckCircle2,
   Menu, 
   X,
-  Star,
-  Clock,
-  ArrowRight,
-  ChevronDown
+  ChevronDown,
+  ArrowRight
 } from 'lucide-react';
 
 export default function Home() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<'ride' | 'drive'>('ride');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
+  
+  // Search State
+  const [search, setSearch] = useState({ origin: '', destination: '' });
 
   const toggleFaq = (index: number) => {
     setActiveFaq(activeFaq === index ? null : index);
+  };
+
+  const handleSearch = () => {
+    // Redirect to the public search page with query parameters
+    const params = new URLSearchParams();
+    if (search.origin) params.append('origin', search.origin);
+    if (search.destination) params.append('destination', search.destination);
+    router.push(`/search?${params.toString()}`);
   };
 
   return (
@@ -83,13 +93,12 @@ export default function Home() {
         <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-12 items-center">
           
           <div className="animate-slide-up">
-            <h1 className="text-5xl lg:text-7xl font-extrabold tracking-tight text-slate-900 leading-[1.1] mb-6">
+            <h1 className="text-5xl lg:text-7xl font-extrabold tracking-tight text-slate-900 leading-[1.1] mb-8">
               Go anywhere. <br />
               <span className="text-teal-600">Spend less.</span>
             </h1>
-            <p className="text-lg text-slate-600 mb-8 max-w-lg leading-relaxed">
-              Nigeria's first scheduled ride-sharing network. Connect with drivers heading your way, split the fare, and enjoy a premium commute for less.
-            </p>
+            
+            {/* Removed the paragraph text here as requested */}
 
             {/* The Tabbed Widget */}
             <div className="bg-white p-2 rounded-2xl shadow-2xl border border-slate-100 max-w-md transform hover:-translate-y-1 transition duration-300">
@@ -115,16 +124,31 @@ export default function Home() {
                         <div className="relative">
                           <div className="absolute left-4 top-3.5 w-2 h-2 bg-black rounded-full"></div>
                           <div className="absolute left-5 top-5 w-0.5 h-8 bg-gray-200"></div>
-                          <input type="text" placeholder="Pickup Location" className="w-full bg-slate-50 hover:bg-slate-100 p-3 pl-10 rounded-lg font-medium focus:ring-2 focus:ring-teal-500 outline-none transition" />
+                          <input 
+                            type="text" 
+                            placeholder="Pickup Location" 
+                            className="w-full bg-slate-50 hover:bg-slate-100 p-3 pl-10 rounded-lg font-medium focus:ring-2 focus:ring-teal-500 outline-none transition" 
+                            value={search.origin}
+                            onChange={(e) => setSearch({ ...search, origin: e.target.value })}
+                          />
                         </div>
                         <div className="relative">
                           <div className="absolute left-4 top-3.5 w-2 h-2 bg-teal-600 rounded-sm"></div>
-                          <input type="text" placeholder="Destination" className="w-full bg-slate-50 hover:bg-slate-100 p-3 pl-10 rounded-lg font-medium focus:ring-2 focus:ring-teal-500 outline-none transition" />
+                          <input 
+                            type="text" 
+                            placeholder="Destination" 
+                            className="w-full bg-slate-50 hover:bg-slate-100 p-3 pl-10 rounded-lg font-medium focus:ring-2 focus:ring-teal-500 outline-none transition" 
+                            value={search.destination}
+                            onChange={(e) => setSearch({ ...search, destination: e.target.value })}
+                          />
                         </div>
                      </div>
-                     <Link href="/auth?role=passenger" className="block w-full bg-slate-900 text-white text-center py-4 rounded-xl font-bold hover:bg-slate-800 transition">
-                       See Prices
-                     </Link>
+                     <button 
+                        onClick={handleSearch}
+                        className="block w-full bg-slate-900 text-white text-center py-4 rounded-xl font-bold hover:bg-slate-800 transition flex items-center justify-center gap-2"
+                     >
+                       See Prices <ArrowRight className="w-5 h-5" />
+                     </button>
                    </div>
                  ) : (
                    <div className="text-center py-4 space-y-4">
@@ -212,15 +236,15 @@ export default function Home() {
                
                <ul className="space-y-4 mb-10">
                  <li className="flex items-center gap-3">
-                   <CheckCircle2 className="text-teal-500 w-6 h-6" />
+                   <div className="w-2 h-2 bg-teal-500 rounded-full"></div>
                    <span className="font-medium">Lowest commission (15%)</span>
                  </li>
                  <li className="flex items-center gap-3">
-                   <CheckCircle2 className="text-teal-500 w-6 h-6" />
+                   <div className="w-2 h-2 bg-teal-500 rounded-full"></div>
                    <span className="font-medium">You control the schedule</span>
                  </li>
                  <li className="flex items-center gap-3">
-                   <CheckCircle2 className="text-teal-500 w-6 h-6" />
+                   <div className="w-2 h-2 bg-teal-500 rounded-full"></div>
                    <span className="font-medium">Filter passengers by rating</span>
                  </li>
                </ul>
@@ -271,11 +295,11 @@ export default function Home() {
               {/* Feature 1 */}
               <div className="border border-slate-200 p-8 rounded-2xl bg-slate-50/50">
                  <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-6">
-                   <Map className="w-6 h-6" />
+                   <MapIcon className="w-6 h-6" />
                  </div>
                  <h3 className="text-xl font-bold mb-2">Velox Inter-City</h3>
                  <p className="text-slate-500 text-sm mb-4">
-                   Safe, scheduled travel between major cities (Lagos, Abuja, Ibadan). verified drivers and comfortable cars.
+                   Safe, scheduled travel between major cities (Lagos, Abuja, Ibadan). Verified drivers and comfortable cars.
                  </p>
                  <span className="inline-block px-2 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded">Coming Q2 2026</span>
               </div>
