@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 
 export default function CommunityGuidelinesPage() {
   return (
@@ -63,9 +64,9 @@ export default function CommunityGuidelinesPage() {
           <p className="text-slate-600 mb-4">
             If you experience or witness behavior that violates these guidelines, please report it to us immediately through the app's Help Center or after your ride. Your feedback is anonymous and helps keep our community safe.
           </p>
-          <button className="bg-black text-white px-6 py-3 rounded-xl font-bold hover:bg-slate-800 transition">
+          <Link href="/passenger/support" className="inline-block bg-black text-white px-6 py-3 rounded-xl font-bold hover:bg-slate-800 transition">
             Contact Support
-          </button>
+          </Link>
         </section>
       </div>
     </div>

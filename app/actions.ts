@@ -4,12 +4,14 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { UserRole } from '@/types';
 
-// ... existing createSystemUser code ...
+// ... existing createSystemUser ...
+// ... existing deleteSystemUser ...
+// ... existing verifyDriver ...
+
+// (Keep your existing functions here, I am appending the new one)
 
 export async function createSystemUser(formData: FormData) {
   const cookieStore = await cookies();
-  
-  // 1. Verify the requester is authorized
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -29,25 +31,15 @@ export async function createSystemUser(formData: FormData) {
   const fullName = formData.get('full_name') as string;
   const phone = formData.get('phone') as string;
 
-  // 2. Enforce Hierarchy Rules
-  if (requesterRole === 'employee') {
-    if (!['passenger', 'driver'].includes(targetRole)) {
+  if (requesterRole === 'employee' && !['passenger', 'driver'].includes(targetRole)) {
       return { error: 'Staff can only create Passengers and Drivers' };
-    }
   }
-
-  if (requesterRole === 'manager') {
-    if (['superadmin', 'manager'].includes(targetRole)) {
+  if (requesterRole === 'manager' && ['superadmin', 'manager'].includes(targetRole)) {
       return { error: 'Managers cannot create other Managers or Superadmins' };
-    }
   }
 
-  // 3. Create the User
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  
-  if (!serviceRoleKey) {
-    return { error: 'Missing SUPABASE_SERVICE_ROLE_KEY in server environment. Cannot create user securely.' };
-  }
+  if (!serviceRoleKey) return { error: 'Missing SUPABASE_SERVICE_ROLE_KEY' };
 
   const supabaseAdmin = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -56,24 +48,16 @@ export async function createSystemUser(formData: FormData) {
   );
 
   const { error } = await supabaseAdmin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: {
-      full_name: fullName,
-      phone_number: phone,
-      role: targetRole
-    }
+    email, password, email_confirm: true,
+    user_metadata: { full_name: fullName, phone_number: phone, role: targetRole }
   });
 
   if (error) return { error: error.message };
-
   return { success: true };
 }
 
 export async function deleteSystemUser(userId: string) {
   const cookieStore = await cookies();
-  
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -96,30 +80,21 @@ export async function deleteSystemUser(userId: string) {
     { cookies: { getAll: () => [], setAll: () => {} } }
   );
 
-  // Fetch target user to check role hierarchy before deleting
   const { data: targetUser, error: fetchError } = await supabaseAdmin.auth.admin.getUserById(userId);
-  
   if (fetchError || !targetUser.user) return { error: 'User not found' };
 
   const targetRole = targetUser.user.user_metadata.role as UserRole;
-
-  // Hierarchy Check
-  if (requesterRole === 'manager') {
-    if (['superadmin', 'manager'].includes(targetRole)) {
+  if (requesterRole === 'manager' && ['superadmin', 'manager'].includes(targetRole)) {
       return { error: 'Managers cannot delete other Managers or Superadmins' };
-    }
   }
 
-  // Delete
   const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
   if (error) return { error: error.message };
-
   return { success: true };
 }
 
 export async function verifyDriver(driverId: string) {
   const cookieStore = await cookies();
-  
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -129,13 +104,10 @@ export async function verifyDriver(driverId: string) {
   const { data: { user: requester } } = await supabase.auth.getUser();
   const requesterRole = requester?.user_metadata?.role as UserRole;
 
-  // 1. Authorization Check: Superadmin, Manager, and Employee (Staff) can verify
   if (!requester || !['superadmin', 'manager', 'employee'].includes(requesterRole)) {
     return { error: 'Unauthorized access' };
   }
 
-  // 2. Perform Update via Admin Client (Bypasses RLS to ensure write)
-  // Although RLS policy might allow staff update, using admin client ensures consistency
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!serviceRoleKey) return { error: 'Server misconfiguration' };
 
@@ -149,9 +121,36 @@ export async function verifyDriver(driverId: string) {
     .from('profiles')
     .update({ is_verified: true })
     .eq('id', driverId)
-    .eq('role', 'driver'); // Ensure we are only verifying drivers
+    .eq('role', 'driver');
 
   if (error) return { error: error.message };
+  return { success: true };
+}
 
+// --- NEW: Delete Own Account ---
+export async function deleteMyAccount() {
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
+  );
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: 'Not authenticated' };
+
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey) return { error: 'Server misconfiguration. Cannot delete account securely.' };
+
+  const supabaseAdmin = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    serviceRoleKey,
+    { cookies: { getAll: () => [], setAll: () => {} } }
+  );
+
+  // Delete the user from Auth (Cascades to profiles/rides etc via DB schema)
+  const { error } = await supabaseAdmin.auth.admin.deleteUser(user.id);
+
+  if (error) return { error: error.message };
   return { success: true };
 }
