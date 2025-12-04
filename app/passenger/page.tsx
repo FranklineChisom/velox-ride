@@ -6,12 +6,11 @@ import { format } from 'date-fns';
 import { MapPin, Search, Clock, CreditCard, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { searchLocation, getRoute } from '@/lib/osm';
-// Dynamic import for Map to disable SSR
 import dynamic from 'next/dynamic';
 
 const LeafletMap = dynamic(() => import('@/components/Map'), { 
   ssr: false,
-  loading: () => <div className="h-full w-full bg-slate-100 animate-pulse flex items-center justify-center text-slate-400">Loading Map...</div>
+  loading: () => <div className="h-full w-full bg-velox-midnight animate-pulse flex items-center justify-center text-gray-600">Loading Map...</div>
 });
 
 export default function PassengerDashboard() {
@@ -39,20 +38,17 @@ export default function PassengerDashboard() {
     e.preventDefault();
     setLoading(true);
 
-    // 1. Geocode locations
     const pickup = await searchLocation(search.from);
     const dropoff = await searchLocation(search.to);
 
     if (pickup) setPickupCoords(pickup);
     if (dropoff) setDropoffCoords(dropoff);
 
-    // 2. Get Route visualization if both exist
     if (pickup && dropoff) {
       const route = await getRoute(pickup, dropoff);
       if (route) setRoutePath(route);
     }
 
-    // 3. Database Search
     let query = supabase
       .from('rides')
       .select('*, profiles(full_name)')
@@ -86,94 +82,100 @@ export default function PassengerDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row">
-      {/* Sidebar / Main Content Area */}
-      <div className="w-full md:w-1/2 lg:w-1/3 p-4 flex flex-col h-screen overflow-y-auto z-10 bg-white shadow-xl">
-        <nav className="flex justify-between items-center mb-8">
-          <h1 className="text-xl font-bold text-slate-900">VeloxRide</h1>
-          <button onClick={handleLogout} className="text-sm text-red-600 hover:text-red-700 font-medium">Sign Out</button>
+    <div className="min-h-screen bg-velox-midnight flex flex-col md:flex-row">
+      {/* Sidebar Panel */}
+      <div className="w-full md:w-1/2 lg:w-1/3 flex flex-col h-screen overflow-y-auto z-10 bg-velox-navy border-r border-white/5 shadow-2xl">
+        <nav className="flex justify-between items-center p-6 border-b border-white/5">
+          <h1 className="text-xl font-bold text-white flex items-center gap-2">
+            <span className="text-velox-gold">Velox</span>Passenger
+          </h1>
+          <button onClick={handleLogout} className="text-xs font-bold text-gray-500 hover:text-white uppercase tracking-wider transition">Sign Out</button>
         </nav>
 
-        {/* Search Box */}
-        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6">
-            <h2 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Find a Ride</h2>
-            <form onSubmit={handleSearch} className="space-y-3">
-                <div className="relative">
-                    <MapPin className="absolute left-3 top-3 text-slate-400 w-5 h-5" />
-                    <input 
-                        type="text" 
-                        placeholder="Pickup (e.g. Wuse 2)"
-                        className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:outline-none transition"
-                        value={search.from}
-                        onChange={e => setSearch({...search, from: e.target.value})}
-                    />
-                </div>
-                <div className="relative">
-                    <MapPin className="absolute left-3 top-3 text-slate-400 w-5 h-5" />
-                    <input 
-                        type="text" 
-                        placeholder="Destination (e.g. Gwarinpa)"
-                        className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:outline-none transition"
-                        value={search.to}
-                        onChange={e => setSearch({...search, to: e.target.value})}
-                    />
-                </div>
-                <button 
-                  type="submit" 
-                  disabled={loading}
-                  className="w-full bg-teal-600 text-white py-3 rounded-lg font-bold hover:bg-teal-700 transition flex items-center justify-center"
-                >
-                    {loading ? <Loader2 className="animate-spin w-5 h-5" /> : 'Search Rides'}
-                </button>
-            </form>
-        </div>
+        <div className="p-6">
+            {/* Search Box */}
+            <div className="bg-velox-midnight p-5 rounded-2xl border border-white/5 mb-8 shadow-inner">
+                <h2 className="text-xs font-bold text-velox-gold uppercase tracking-wider mb-4">Route Selection</h2>
+                <form onSubmit={handleSearch} className="space-y-3">
+                    <div className="relative">
+                        <MapPin className="absolute left-3 top-3.5 text-gray-500 w-5 h-5" />
+                        <input 
+                            type="text" 
+                            placeholder="Pickup Location"
+                            className="w-full pl-10 pr-4 py-3 bg-velox-navy border border-white/10 rounded-xl focus:ring-1 focus:ring-velox-gold focus:outline-none transition text-white placeholder-gray-600"
+                            value={search.from}
+                            onChange={e => setSearch({...search, from: e.target.value})}
+                        />
+                    </div>
+                    <div className="relative">
+                        <MapPin className="absolute left-3 top-3.5 text-gray-500 w-5 h-5" />
+                        <input 
+                            type="text" 
+                            placeholder="Destination"
+                            className="w-full pl-10 pr-4 py-3 bg-velox-navy border border-white/10 rounded-xl focus:ring-1 focus:ring-velox-gold focus:outline-none transition text-white placeholder-gray-600"
+                            value={search.to}
+                            onChange={e => setSearch({...search, to: e.target.value})}
+                        />
+                    </div>
+                    <button 
+                      type="submit" 
+                      disabled={loading}
+                      className="w-full bg-white text-velox-midnight py-3 rounded-xl font-bold hover:bg-gray-200 transition flex items-center justify-center mt-2"
+                    >
+                        {loading ? <Loader2 className="animate-spin w-5 h-5" /> : 'Find Available Rides'}
+                    </button>
+                </form>
+            </div>
 
-        {/* Results */}
-        <div className="flex-1 space-y-4">
-            <h3 className="text-lg font-bold text-slate-800">Available Rides</h3>
-            {!loading && rides.length === 0 && <p className="text-slate-400 text-sm">No rides found. Try different locations.</p>}
-            
-            {rides.map((ride: any) => (
-                <div key={ride.id} className="bg-white p-4 rounded-xl border border-slate-200 hover:border-teal-500 transition cursor-pointer group">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <div className="text-xl font-bold text-slate-900">
-                                {format(new Date(ride.departure_time), 'h:mm a')}
-                            </div>
-                            
-                            <div className="flex items-center gap-2 mt-2">
-                                <div className="w-1.5 h-1.5 rounded-full bg-teal-500"></div>
-                                <span className="font-medium text-slate-600 text-sm">{ride.origin}</span>
-                            </div>
-                            <div className="flex items-center gap-2 mt-1">
-                                <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
-                                <span className="font-medium text-slate-600 text-sm">{ride.destination}</span>
+            {/* Results */}
+            <div className="space-y-4">
+                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Matches</h3>
+                {!loading && rides.length === 0 && <p className="text-gray-600 text-sm italic">No rides found matching your route.</p>}
+                
+                {rides.map((ride: any) => (
+                    <div key={ride.id} className="bg-velox-midnight p-5 rounded-2xl border border-white/5 hover:border-velox-gold/50 transition cursor-pointer group">
+                        <div className="flex justify-between items-start">
+                            <div className="space-y-2">
+                                <div className="text-xl font-bold text-white">
+                                    {format(new Date(ride.departure_time), 'h:mm a')}
+                                </div>
+                                
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                      <div className="w-1.5 h-1.5 rounded-full bg-velox-gold"></div>
+                                      <span className="font-medium text-gray-400 text-sm">{ride.origin}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                      <div className="w-1.5 h-1.5 rounded-full bg-white"></div>
+                                      <span className="font-medium text-gray-400 text-sm">{ride.destination}</span>
+                                  </div>
+                                </div>
+
+                                <div className="pt-2 flex items-center gap-2 text-xs text-gray-500 font-bold uppercase tracking-wider">
+                                    <span className="text-velox-gold">{ride.profiles?.full_name}</span>
+                                    <span>•</span>
+                                    <span>{ride.total_seats} seats</span>
+                                </div>
                             </div>
 
-                            <div className="mt-3 flex items-center gap-2 text-xs text-slate-400 font-medium">
-                                <span>{ride.profiles?.full_name}</span>
-                                <span>•</span>
-                                <span>{ride.total_seats} seats</span>
+                            <div className="text-right flex flex-col justify-between h-full">
+                                <div className="text-lg font-bold text-white">₦{ride.price_per_seat}</div>
+                                <button 
+                                    onClick={() => handleBook(ride.id, ride.price_per_seat)}
+                                    className="mt-4 bg-velox-gold text-velox-midnight px-4 py-2 rounded-lg text-xs font-bold hover:bg-yellow-400 transition shadow-lg shadow-velox-gold/10"
+                                >
+                                    Book
+                                </button>
                             </div>
-                        </div>
-
-                        <div className="text-right">
-                            <div className="text-lg font-bold text-teal-600">₦{ride.price_per_seat}</div>
-                            <button 
-                                onClick={() => handleBook(ride.id, ride.price_per_seat)}
-                                className="mt-3 bg-slate-900 text-white px-4 py-2 rounded-lg text-xs font-bold group-hover:bg-teal-600 transition"
-                            >
-                                Book
-                            </button>
                         </div>
                     </div>
-                </div>
-            ))}
+                ))}
+            </div>
         </div>
       </div>
 
       {/* Map Area */}
-      <div className="hidden md:block flex-1 h-screen sticky top-0">
+      <div className="hidden md:block flex-1 h-screen sticky top-0 bg-velox-midnight">
          <LeafletMap 
             pickup={pickupCoords} 
             dropoff={dropoffCoords} 

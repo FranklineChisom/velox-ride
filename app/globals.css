@@ -5,13 +5,12 @@
 }
 
 :root {
-  /* Premium Palette Overrides */
-  --foreground-rgb: 15, 23, 42; /* Slate 900 */
-  --background-rgb: 248, 250, 252; /* Slate 50 */
+  /* Midnight & Gold Palette */
+  --foreground-rgb: 248, 250, 252; /* White text */
+  --background-rgb: 2, 6, 23;      /* Midnight background */
   
-  --primary-teal: 13, 148, 136;
-  --primary-midnight: 2, 6, 23;
-  --accent-gold: 194, 155, 64;
+  --primary-gold: 226, 185, 59;
+  --surface-navy: 15, 23, 42;
 }
 
 body {
@@ -19,18 +18,26 @@ body {
   background: rgb(var(--background-rgb));
 }
 
-/* Premium Glass Effect */
+/* Premium Glass Effect for Dark Mode */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(15, 23, 42, 0.7);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(226, 185, 59, 0.1); /* Subtle gold border */
 }
 
 .glass-nav {
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(2, 6, 23, 0.85);
   backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Dark Map Filter */
+.map-dark-mode .leaflet-layer,
+.map-dark-mode .leaflet-control-zoom-in,
+.map-dark-mode .leaflet-control-zoom-out,
+.map-dark-mode .leaflet-control-attribution {
+  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
 }
 
 /* Smooth Scrolling */
@@ -38,17 +45,18 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Custom Scrollbar for Chrome/Safari/Webkit */
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
+  background: #020617;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1;
+  background-color: #334155;
   border-radius: 20px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background-color: #94a3b8;
+  background-color: #E2B93B;
 }

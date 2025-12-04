@@ -13,11 +13,12 @@ const config: Config = {
       },
       colors: {
         velox: {
-          dark: '#020617',     // Slate 950 - For heavy backgrounds
-          navy: '#0F172A',     // Slate 900 - For primary text
-          teal: '#0F766E',     // Teal 700 - A darker, richer teal
-          gold: '#C29B40',     // Muted metallic gold
-          light: '#F8FAFC',    // Slate 50 - Crisp background
+          midnight: '#020617', // Main background (Deepest Blue)
+          navy: '#0F172A',     // Secondary background (Card bg)
+          gold: '#E2B93B',     // Primary Brand Color
+          goldLight: '#FCD34D', // Hover states
+          slate: '#94A3B8',    // Muted text
+          white: '#F8FAFC',    // Primary text
         }
       },
       animation: {

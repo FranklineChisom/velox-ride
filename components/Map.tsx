@@ -1,11 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
-// Fix icons
 const iconUrl = 'https://unpkg.com/leaflet@1.9.3/dist/images/marker-icon.png';
 const iconRetinaUrl = 'https://unpkg.com/leaflet@1.9.3/dist/images/marker-icon-2x.png';
 const shadowUrl = 'https://unpkg.com/leaflet@1.9.3/dist/images/marker-shadow.png';
@@ -32,7 +31,6 @@ interface MapProps {
   selectionMode?: 'pickup' | 'dropoff' | null;
 }
 
-// Component to handle map clicks
 function LocationSelector({ onSelect }: { onSelect: (coords: Coordinates) => void }) {
   useMapEvents({
     click(e) {
@@ -42,7 +40,6 @@ function LocationSelector({ onSelect }: { onSelect: (coords: Coordinates) => voi
   return null;
 }
 
-// Component to update view
 function MapUpdater({ pickup, dropoff }: { pickup?: Coordinates; dropoff?: Coordinates }) {
   const map = useMap();
   useEffect(() => {
@@ -63,7 +60,8 @@ export default function Map({ pickup, dropoff, routeCoordinates, onPickupSelect,
   const defaultCenter = { lat: 9.0765, lng: 7.3986 }; // Abuja
 
   return (
-    <div className="h-full w-full rounded-xl overflow-hidden z-0 relative">
+    // 'map-dark-mode' class triggers CSS filters in globals.css for the midnight look
+    <div className="h-full w-full rounded-none overflow-hidden z-0 relative map-dark-mode bg-[#020617]">
       <MapContainer
         center={[defaultCenter.lat, defaultCenter.lng]}
         zoom={13}
@@ -95,15 +93,15 @@ export default function Map({ pickup, dropoff, routeCoordinates, onPickupSelect,
         )}
 
         {routeCoordinates && (
-          <Polyline positions={routeCoordinates} color="#0D9488" weight={5} opacity={0.7} />
+          // Gold route line
+          <Polyline positions={routeCoordinates} color="#E2B93B" weight={5} opacity={0.8} />
         )}
 
         <MapUpdater pickup={pickup} dropoff={dropoff} />
       </MapContainer>
       
-      {/* Selection Mode Indicator */}
       {selectionMode && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-slate-900 text-white px-4 py-2 rounded-full text-sm font-bold shadow-xl animate-bounce">
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-velox-navy border border-velox-gold text-white px-4 py-2 rounded-full text-sm font-bold shadow-xl animate-bounce">
           Tap map to select {selectionMode}
         </div>
       )}

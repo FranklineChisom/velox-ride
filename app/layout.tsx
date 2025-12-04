@@ -2,7 +2,6 @@ import './globals.css';
 import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans } from 'next/font/google';
 
-// Switching to Plus Jakarta Sans for a more modern, premium geometric feel
 const jakarta = Plus_Jakarta_Sans({ 
   subsets: ['latin'],
   display: 'swap',
@@ -21,7 +20,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning className={jakarta.variable}>
-      <body className={`${jakarta.className} antialiased bg-slate-50 text-slate-900 selection:bg-teal-500 selection:text-white`}>
+      <body className={`${jakarta.className} antialiased bg-velox-midnight text-velox-white selection:bg-velox-gold selection:text-velox-midnight`}>
         {children}
       </body>
     </html>
