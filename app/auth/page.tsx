@@ -2,34 +2,37 @@
 import { useState, Suspense } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Loader2, ArrowLeft, Mail, Lock, User, Briefcase, Shield } from 'lucide-react';
+import { Loader2, ArrowLeft, Mail, Lock, User, Briefcase, CheckCircle2, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import { IMAGES } from '@/lib/constants';
 import { UserRole } from '@/types';
 
 function AuthContent() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
   
-  const queryRole = searchParams.get('role');
-  const role: UserRole = (queryRole === 'driver' || queryRole === 'passenger') ? queryRole : 'passenger';
+  const defaultRole = searchParams.get('role') === 'driver' ? 'driver' : 'passenger';
   const next = searchParams.get('next');
 
-  // Helper to determine destination based on role
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [role, setRole] = useState<UserRole>(defaultRole);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+
   const getDestination = (userRole: string) => {
     if (next) return decodeURIComponent(next);
     switch(userRole) {
       case 'driver': return '/driver';
       case 'passenger': return '/passenger';
       case 'superadmin': return '/admin';
+      case 'manager': return '/manager';
       case 'employee': return '/staff';
       default: return '/passenger';
     }
@@ -39,39 +42,37 @@ function AuthContent() {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setSuccessMsg(null);
 
     try {
-      if (isSignUp) {
-        // Sign Up (Typically only for Passengers and Drivers)
+      if (mode === 'signup') {
         const { error: signUpError } = await supabase.auth.signUp({
           email,
           password,
           options: { 
             data: { 
               full_name: fullName, 
-              role: role // 'passenger' or 'driver'
+              phone_number: phone,
+              role: role 
             } 
           },
         });
         if (signUpError) throw signUpError;
-        alert('Check your email for confirmation!');
+        
+        // Updated success message with email confirmation instruction
+        setSuccessMsg('Account created successfully! Please check your email to confirm your account before logging in.');
+        setMode('signin'); 
       } else {
-        // Sign In
         const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
         if (signInError) throw signInError;
         
         if (data.user) {
-          // Check user role metadata for redirection
           const userRole = data.user.user_metadata?.role || 'passenger';
           router.push(getDestination(userRole));
         }
       }
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('An unexpected error occurred');
-      }
+    } catch (err: any) {
+      setError(err.message || 'An unexpected error occurred');
     } finally {
       setLoading(false);
     }
@@ -79,115 +80,101 @@ function AuthContent() {
 
   return (
     <div className="min-h-screen flex bg-white font-sans">
-      
-      {/* Left Panel - Visual */}
-      <div className="hidden lg:flex w-1/2 bg-black relative overflow-hidden items-center justify-center p-12">
+      <div className="hidden lg:flex w-1/2 bg-slate-900 relative overflow-hidden items-center justify-center p-12">
         <div className="absolute inset-0 opacity-40">
-           <img 
-             src={role === 'driver' ? IMAGES.authDriver : IMAGES.authPassenger}
-             className="w-full h-full object-cover"
-             alt="Background"
-           />
+           <img src={role === 'driver' && mode === 'signup' ? IMAGES.authDriver : IMAGES.authPassenger} className="w-full h-full object-cover transition-opacity duration-700" alt="Background" />
         </div>
         <div className="relative z-10 text-white max-w-lg">
-           <h2 className="text-5xl font-bold mb-6">{role === 'driver' ? 'Drive. Earn. Live.' : 'Move with safety and class.'}</h2>
-           <p className="text-xl text-slate-300">
-             {role === 'driver' 
-               ? "Join thousands of drivers earning on their own terms." 
-               : "Experience the most reliable ride-hailing service in the city."}
+           <h2 className="text-5xl font-bold mb-6 leading-tight">
+             {mode === 'signup' && role === 'driver' ? 'Drive with Velox.' : 'Move with Velox.'}
+           </h2>
+           <p className="text-xl text-slate-300 leading-relaxed">
+             {mode === 'signup' && role === 'driver' 
+               ? "Turn your daily commute into income. Sign up in 2 minutes and start earning." 
+               : "Experience the most reliable, scheduled ride-sharing service in Nigeria."}
            </p>
         </div>
       </div>
 
-      {/* Right Panel - Form */}
-      <div className="w-full lg:w-1/2 flex mt-20 items-center justify-center p-8 relative">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-12 relative overflow-y-auto">
+        <Link href="/" className="absolute top-8 right-8 text-slate-500 hover:text-black transition flex items-center gap-2 font-bold text-sm z-20">
+          <ArrowLeft className="w-4 h-4" /> Back to Home
+        </Link>
 
-
-        <div className="w-full max-w-md">
-           <div className="mb-10">  
-             <h1 className="text-4xl font-bold text-slate-900 mb-2">
-               {isSignUp ? 'Create Account' : 'Welcome Back'}
-             </h1>
-             <p className="text-slate-500 text-lg">
-               {isSignUp ? `Sign up to become a ${role}` : `Log in to your ${role} dashboard`}
-             </p>
+        <div className="w-full max-w-md space-y-8">
+           <div>
+             <div className="w-10 h-10 bg-black text-white rounded-xl flex items-center justify-center font-bold text-xl mb-6">V</div>
+             <h1 className="text-3xl font-bold text-slate-900 mb-2">{mode === 'signup' ? 'Create an account' : 'Welcome back'}</h1>
+             <p className="text-slate-500">{mode === 'signup' ? 'Enter your details to get started.' : 'Please enter your details to sign in.'}</p>
            </div>
 
-           {error && (
-             <div className="bg-red-50 text-red-600 p-4 rounded-xl mb-6 text-sm font-medium border border-red-100 flex items-center gap-2">
-               <span className="w-1.5 h-1.5 rounded-full bg-red-600"></span>
-               {error}
+           <div className="p-1 bg-slate-100 rounded-xl grid grid-cols-2 mb-6">
+              <button onClick={() => { setMode('signin'); setError(null); setSuccessMsg(null); }} className={`py-2.5 text-sm font-bold rounded-lg transition-all ${mode === 'signin' ? 'bg-white text-black shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Log In</button>
+              <button onClick={() => { setMode('signup'); setError(null); setSuccessMsg(null); }} className={`py-2.5 text-sm font-bold rounded-lg transition-all ${mode === 'signup' ? 'bg-white text-black shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Sign Up</button>
+           </div>
+
+           {error && <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm font-medium flex items-start gap-3"><AlertCircle className="w-5 h-5 shrink-0 mt-0.5" /><span>{error}</span></div>}
+           
+           {/* Success Message Block */}
+           {successMsg && (
+             <div className="bg-green-50 text-green-700 p-4 rounded-xl text-sm font-medium flex items-start gap-3 animate-fade-in">
+               <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />
+               <div className="space-y-2">
+                 <p>{successMsg}</p>
+                 <button 
+                   onClick={() => setSuccessMsg(null)} 
+                   className="text-green-800 font-bold underline hover:text-green-950 text-xs"
+                 >
+                   Okay, I&apos;ve confirmed it. Log in now.
+                 </button>
+               </div>
              </div>
            )}
 
-           <form onSubmit={handleAuth} className="space-y-5">
-             {isSignUp && (
-               <div className="space-y-2">
-                 <label className="text-sm font-bold text-slate-700 ml-1">Full Name</label>
-                 <div className="relative">
-                   <User className="absolute left-4 top-3.5 w-5 h-5 text-slate-400" />
-                   <input
-                     type="text"
-                     required
-                     className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-black focus:border-transparent outline-none transition font-medium"
-                     placeholder="John Doe"
-                     value={fullName}
-                     onChange={(e) => setFullName(e.target.value)}
-                   />
+           {/* Form - Hidden only if success message is showing to prevent confusion */}
+           {!successMsg && (
+             <form onSubmit={handleAuth} className="space-y-5">
+                 {mode === 'signup' && (
+                   <div className="grid grid-cols-2 gap-4">
+                      <div onClick={() => setRole('passenger')} className={`cursor-pointer border p-4 rounded-xl flex flex-col items-center gap-2 transition ${role === 'passenger' ? 'border-black bg-slate-50 ring-1 ring-black' : 'border-slate-200 hover:border-slate-300'}`}>
+                         <User className={`w-6 h-6 ${role === 'passenger' ? 'text-black' : 'text-slate-400'}`} />
+                         <span className={`text-sm font-bold ${role === 'passenger' ? 'text-black' : 'text-slate-500'}`}>Passenger</span>
+                      </div>
+                      <div onClick={() => setRole('driver')} className={`cursor-pointer border p-4 rounded-xl flex flex-col items-center gap-2 transition ${role === 'driver' ? 'border-black bg-slate-50 ring-1 ring-black' : 'border-slate-200 hover:border-slate-300'}`}>
+                         <Briefcase className={`w-6 h-6 ${role === 'driver' ? 'text-black' : 'text-slate-400'}`} />
+                         <span className={`text-sm font-bold ${role === 'driver' ? 'text-black' : 'text-slate-500'}`}>Driver</span>
+                      </div>
+                   </div>
+                 )}
+
+                 {mode === 'signup' && (
+                   <>
+                     <div className="space-y-1.5">
+                       <label className="text-xs font-bold text-slate-700 ml-1 uppercase tracking-wider">Full Name</label>
+                       <input type="text" required className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-black" placeholder="John Doe" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+                     </div>
+                     <div className="space-y-1.5">
+                       <label className="text-xs font-bold text-slate-700 ml-1 uppercase tracking-wider">Phone</label>
+                       <input type="tel" required className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-black" placeholder="+234..." value={phone} onChange={(e) => setPhone(e.target.value)} />
+                     </div>
+                   </>
+                 )}
+                 
+                 <div className="space-y-1.5">
+                   <label className="text-xs font-bold text-slate-700 ml-1 uppercase tracking-wider">Email</label>
+                   <input type="email" required className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-black" placeholder="name@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
                  </div>
-               </div>
-             )}
-             
-             <div className="space-y-2">
-               <label className="text-sm font-bold text-slate-700 ml-1">Email Address</label>
-               <div className="relative">
-                 <Mail className="absolute left-4 top-3.5 w-5 h-5 text-slate-400" />
-                 <input
-                   type="email"
-                   required
-                   className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-black focus:border-transparent outline-none transition font-medium"
-                   placeholder="name@example.com"
-                   value={email}
-                   onChange={(e) => setEmail(e.target.value)}
-                 />
-               </div>
-             </div>
 
-             <div className="space-y-2">
-               <label className="text-sm font-bold text-slate-700 ml-1">Password</label>
-               <div className="relative">
-                 <Lock className="absolute left-4 top-3.5 w-5 h-5 text-slate-400" />
-                 <input
-                   type="password"
-                   required
-                   className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-black focus:border-transparent outline-none transition font-medium"
-                   placeholder="••••••••"
-                   value={password}
-                   onChange={(e) => setPassword(e.target.value)}
-                 />
-               </div>
-             </div>
+                 <div className="space-y-1.5">
+                   <label className="text-xs font-bold text-slate-700 ml-1 uppercase tracking-wider">Password</label>
+                   <input type="password" required className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-black" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
+                 </div>
 
-             <button
-               type="submit"
-               disabled={loading}
-               className="w-full py-4 bg-black text-white rounded-xl font-bold text-lg hover:bg-slate-800 transition flex justify-center shadow-xl shadow-slate-200 mt-4"
-             >
-               {loading ? <Loader2 className="animate-spin" /> : (isSignUp ? 'Create Account' : 'Log In')}
-             </button>
-           </form>
-
-           <div className="mt-10 text-center">
-             <p className="text-slate-500">
-               {isSignUp ? 'Already have an account? ' : 'New to Veluxeride? '}
-               <button
-                 onClick={() => setIsSignUp(!isSignUp)}
-                 className="text-black font-bold hover:underline underline-offset-4"
-               >
-                 {isSignUp ? 'Log in' : 'Sign up'}
-               </button>
-             </p>
-           </div>
+                 <button type="submit" disabled={loading} className="w-full py-4 bg-black text-white rounded-xl font-bold text-lg hover:bg-slate-800 transition flex items-center justify-center gap-2 shadow-xl mt-6 disabled:opacity-70">
+                   {loading ? <Loader2 className="animate-spin w-5 h-5" /> : (mode === 'signup' ? 'Create account' : 'Sign in')}
+                 </button>
+             </form>
+           )}
         </div>
       </div>
     </div>
@@ -195,9 +182,5 @@ function AuthContent() {
 }
 
 export default function AuthPage() {
-  return (
-    <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-white"><Loader2 className="animate-spin text-black w-8 h-8"/></div>}>
-      <AuthContent />
-    </Suspense>
-  )
+  return <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-white"><Loader2 className="animate-spin text-black w-8 h-8"/></div>}><AuthContent /></Suspense>;
 }

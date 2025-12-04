@@ -12,7 +12,7 @@ import { format } from 'date-fns';
 // Dynamic import for Leaflet map to avoid SSR issues
 const LeafletMap = dynamic(() => import('@/components/Map'), { 
   ssr: false,
-  loading: () => <div className="h-full w-full bg-gray-50 animate-pulse flex items-center justify-center text-slate-400">Loading Map...</div>
+  loading: () => <div className="h-full w-full bg-slate-50 animate-pulse flex items-center justify-center text-slate-400">Loading Map...</div>
 });
 
 function SearchContent() {
@@ -49,8 +49,12 @@ function SearchContent() {
 
   // Load initial search if params exist
   useEffect(() => {
-    if (query.origin && query.destination && !coords.pickup) {
+    // If params exist, run search immediately
+    if (query.origin || query.destination) {
       performSearch(false); 
+    } else {
+        // Even if no params, fetch all available rides for display
+        performSearch(false);
     }
     fetchRecentSearches();
   }, []);
@@ -115,8 +119,9 @@ function SearchContent() {
     if (!activeField) return;
 
     const newCoords = { lat: parseFloat(suggestion.lat), lng: parseFloat(suggestion.lon) };
+    const displayName = suggestion.display_name.split(',')[0];
     
-    setQuery(prev => ({ ...prev, [activeField]: suggestion.display_name.split(',')[0] }));
+    setQuery(prev => ({ ...prev, [activeField]: displayName }));
     
     if (activeField === 'origin') {
       setCoords(prev => ({ ...prev, pickup: newCoords }));
@@ -144,6 +149,7 @@ function SearchContent() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user || !coords.pickup || !coords.dropoff) return;
 
+    // Avoid saving duplicates purely by name for simplicity
     const { error } = await supabase.from('search_history').insert({
       user_id: user.id,
       origin_name: query.origin,
@@ -159,33 +165,57 @@ function SearchContent() {
 
   const performSearch = async (shouldSaveHistory = true) => {
     setLoading(true);
-    setSuggestions([]);
+    setSuggestions([]); // Clear any open suggestions
     
-    const { data: allRides, error } = await supabase
-      .from('rides')
-      .select('*, profiles(full_name, phone_number)')
-      .eq('status', 'scheduled')
-      .gt('departure_time', new Date().toISOString())
-      .order('departure_time', { ascending: true });
+    try {
+        // Construct date filter: Get rides departing from NOW onwards
+        // We subtract a small buffer (e.g., 2 hours) to show rides that *just* started or allowing for slight clock skew
+        const now = new Date();
+        now.setHours(now.getHours() - 2); 
+        const isoDate = now.toISOString();
 
-    if (!error && allRides) {
-      // Cast is safe here assuming database relations are correct
-      const typedRides = allRides as unknown as RideWithDriver[];
-      setRides(typedRides);
-      
-      const filtered = typedRides.filter(ride => {
-        const originMatch = ride.origin.toLowerCase().includes(query.origin.toLowerCase());
-        const destMatch = ride.destination.toLowerCase().includes(query.destination.toLowerCase());
-        return originMatch || destMatch; 
-      });
-      setFilteredRides(filtered);
-    }
-    
-    if (shouldSaveHistory && coords.pickup && coords.dropoff) {
-      saveSearchToHistory();
-    }
+        // Join with profiles to get driver info
+        const { data: allRides, error } = await supabase
+        .from('rides')
+        .select('*, profiles(full_name, phone_number, is_verified, avatar_url)')
+        .eq('status', 'scheduled')
+        .gt('departure_time', isoDate)
+        .order('departure_time', { ascending: true });
 
-    setLoading(false);
+        if (error) {
+            console.error('Search error details:', error.message, error.details);
+            throw error;
+        }
+
+        if (allRides) {
+            const typedRides = allRides as unknown as RideWithDriver[];
+            setRides(typedRides);
+            
+            const filtered = typedRides.filter(ride => {
+                // If query is empty, show all
+                if (!query.origin && !query.destination) return true;
+
+                const qOrigin = query.origin.toLowerCase().trim();
+                const qDest = query.destination.toLowerCase().trim();
+
+                const originMatch = !qOrigin || ride.origin.toLowerCase().includes(qOrigin);
+                const destMatch = !qDest || ride.destination.toLowerCase().includes(qDest);
+                
+                return originMatch && destMatch; 
+            });
+            setFilteredRides(filtered);
+        }
+        
+        if (shouldSaveHistory && coords.pickup && coords.dropoff) {
+            saveSearchToHistory();
+        }
+    } catch (err: any) {
+        console.error('Search failed:', err);
+        // Don't alert "undefined" if error object is empty
+        alert(`Failed to load rides: ${err.message || 'Network or database error'}`);
+    } finally {
+        setLoading(false);
+    }
   };
 
   const handleBookAttempt = async () => {
@@ -198,15 +228,26 @@ function SearchContent() {
       return;
     }
 
-    const confirm = window.confirm('Confirm booking?');
+    // Double check it's not the driver booking their own ride
+    const ride = rides.find(r => r.id === selectedRide);
+    if (ride && ride.driver_id === user.id) {
+        alert("You cannot book your own ride.");
+        return;
+    }
+
+    const confirm = window.confirm('Confirm booking for 1 seat?');
     if (confirm) {
       const { error } = await supabase.from('bookings').insert({
         ride_id: selectedRide,
         passenger_id: user.id,
         seats_booked: 1
       });
-      if (!error) alert('Booking Successful!');
-      else alert(error.message);
+      if (!error) {
+        alert('Booking Successful! View it in My Trips.');
+        router.push('/passenger/trips');
+      } else {
+        alert(error.message);
+      }
     }
   };
 
@@ -223,6 +264,7 @@ function SearchContent() {
 
   return (
     <div className="h-screen w-full relative bg-white overflow-hidden font-sans">
+      
       {/* Map Background */}
       <div className="absolute inset-0 z-0">
          <LeafletMap 
@@ -244,14 +286,16 @@ function SearchContent() {
              <ArrowLeft className="w-5 h-5 text-slate-900" />
            </button>
            <h1 className="font-bold text-lg text-slate-900">Request a Ride</h1>
-           <div className="w-9 h-9"></div> 
+           <div className="w-9 h-9"></div> {/* Spacer */}
         </div>
 
         {/* Search Inputs Area */}
         <div className="p-6 bg-white z-20 shadow-sm relative">
            <div className="relative">
+              {/* Connector Line */}
               <div className="absolute left-[27px] top-10 bottom-10 w-0.5 bg-gray-200 z-0"></div>
               
+              {/* Origin Input */}
               <div className="mb-4 relative z-10">
                  <div className="absolute left-4 top-3.5 w-2.5 h-2.5 bg-black rounded-full shadow-[0_0_0_4px_white]"></div>
                  <input 
@@ -266,6 +310,7 @@ function SearchContent() {
                  </button>
               </div>
 
+              {/* Destination Input */}
               <div className="relative z-10">
                  <div className="absolute left-4 top-3.5 w-2.5 h-2.5 bg-slate-900 rounded-sm shadow-[0_0_0_4px_white]"></div>
                  <input 
@@ -280,8 +325,11 @@ function SearchContent() {
                  </button>
               </div>
 
+              {/* Autocomplete Dropdown */}
               {activeField && (suggestions.length > 0 || recentSearches.length > 0) && (
                 <div className="absolute top-full left-0 w-full bg-white rounded-xl shadow-xl border border-gray-100 mt-2 overflow-hidden z-50 max-h-80 overflow-y-auto">
+                  
+                  {/* Suggestions List */}
                   {suggestions.length > 0 && (
                     <div className="py-2">
                       <div className="px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider">Suggestions</div>
@@ -298,6 +346,7 @@ function SearchContent() {
                     </div>
                   )}
 
+                  {/* Recent Searches List (Only show if not typing new search) */}
                   {suggestions.length === 0 && recentSearches.length > 0 && !isTyping && (
                     <div className="py-2 bg-slate-50/50">
                       <div className="px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider flex justify-between items-center">
@@ -336,11 +385,12 @@ function SearchContent() {
         </div>
 
         {/* Ride Options (Scrollable) */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white">
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
            {filteredRides.length === 0 && !loading && (
              <div className="flex flex-col items-center justify-center h-full text-slate-400">
                <Navigation2 className="w-12 h-12 mb-4 opacity-20" />
-               <p className="text-sm">Enter a route to see rides</p>
+               <p className="text-sm">No scheduled rides found for this route.</p>
+               <button onClick={() => performSearch(false)} className="mt-2 text-xs font-bold text-black underline">Refresh all rides</button>
              </div>
            )}
 
@@ -348,25 +398,32 @@ function SearchContent() {
              <div 
                 key={ride.id} 
                 onClick={() => setSelectedRide(ride.id)}
-                className={`p-4 rounded-xl border transition cursor-pointer flex items-center justify-between group ${selectedRide === ride.id ? 'border-black bg-slate-50 ring-1 ring-black' : 'border-gray-100 hover:border-gray-300'}`}
+                className={`p-4 rounded-xl border transition cursor-pointer flex items-center justify-between group bg-white shadow-sm hover:shadow-md ${selectedRide === ride.id ? 'border-black ring-1 ring-black' : 'border-gray-100'}`}
              >
                 <div className="flex items-center gap-4">
-                   <div className="w-16 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
-                      <Car className="w-8 h-8 text-slate-700" />
+                   <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center font-bold text-slate-700">
+                      {ride.profiles?.full_name?.[0] || <User className="w-5 h-5"/>}
                    </div>
                    <div>
-                      <h4 className="font-bold text-slate-900 text-lg">Velox Share</h4>
-                      <div className="flex items-center gap-2 text-xs text-slate-500">
-                         <span className="flex items-center"><User className="w-3 h-3 mr-1"/> {ride.total_seats}</span>
-                         <span>•</span>
-                         <span>{format(new Date(ride.departure_time), 'h:mm a')}</span>
-                         {ride.profiles?.full_name && <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">{ride.profiles.full_name.split(' ')[0]}</span>}
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-slate-900">{ride.profiles?.full_name?.split(' ')[0]}</h4>
+                        {ride.profiles?.is_verified && <div className="w-2 h-2 bg-green-500 rounded-full" title="Verified Driver"></div>}
+                      </div>
+                      <div className="flex flex-col text-xs text-slate-500 mt-1">
+                         <div className="flex items-center gap-2 font-medium">
+                            <span className="text-black">{format(new Date(ride.departure_time), 'h:mm a')}</span>
+                            <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                            <span>{format(new Date(ride.departure_time), 'MMM dd')}</span>
+                         </div>
+                         <div className="flex items-center gap-1 mt-1 truncate max-w-[150px]">
+                            {ride.origin} <ArrowLeft className="w-3 h-3 rotate-180 inline"/> {ride.destination}
+                         </div>
                       </div>
                    </div>
                 </div>
                 <div className="text-right">
                    <div className="text-lg font-bold text-slate-900">₦{ride.price_per_seat}</div>
-                   <div className="text-xs text-slate-500 line-through">₦{Math.round(ride.price_per_seat * 1.4)}</div>
+                   <div className="text-xs text-slate-500">{ride.total_seats} seats</div>
                 </div>
              </div>
            ))}

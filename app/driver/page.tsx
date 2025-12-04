@@ -1,12 +1,11 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
-import { Ride } from '@/types';
+import { Ride, Profile } from '@/types';
 import { APP_CONFIG } from '@/lib/constants';
 import { format } from 'date-fns';
-import { Plus, LogOut, X, TrendingUp, Calendar, ChevronRight, Shield, Loader2, ArrowUpRight } from 'lucide-react';
+import { Plus, LogOut, X, TrendingUp, Calendar, ChevronRight, Shield, Loader2, ArrowUpRight, AlertTriangle, CheckCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { User } from '@supabase/supabase-js';
 
 export default function DriverDashboard() {
   const supabase = createClient();
@@ -15,16 +14,17 @@ export default function DriverDashboard() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [showCompleteProfile, setShowCompleteProfile] = useState(false);
 
-  // Form State
+  // Ride Form State
   const [formData, setFormData] = useState({
-    origin: '',
-    destination: '',
-    date: '',
-    time: '',
-    seats: 4,
-    price: 0
+    origin: '', destination: '', date: '', time: '', seats: 4, price: 0
+  });
+
+  // Vehicle Form State
+  const [vehicleData, setVehicleData] = useState({
+    license_number: '', vehicle_model: '', vehicle_plate: '', vehicle_year: ''
   });
 
   useEffect(() => {
@@ -37,46 +37,123 @@ export default function DriverDashboard() {
         router.push('/auth?role=driver');
         return;
     }
-    setUser(user);
 
-    const { data } = await supabase
-      .from('rides')
-      .select('*')
-      .eq('driver_id', user.id)
-      .order('departure_time', { ascending: true });
+    const [profileRes, ridesRes] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', user.id).single(),
+        supabase.from('rides').select('*').eq('driver_id', user.id).order('departure_time', { ascending: true })
+    ]);
     
-    if (data) setRides(data);
+    if (profileRes.data) {
+        setProfile(profileRes.data);
+        if (!profileRes.data.is_verified || !profileRes.data.license_number) {
+            // Uncomment to force modal on load for unverified users
+            // setShowCompleteProfile(true);
+        }
+    }
+    if (ridesRes.data) setRides(ridesRes.data);
     setLoading(false);
+  };
+
+  const handleUpdateVehicle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if(!profile) return;
+    
+    const { error } = await supabase.from('profiles').update({
+        license_number: vehicleData.license_number,
+        vehicle_model: vehicleData.vehicle_model,
+        vehicle_plate: vehicleData.vehicle_plate,
+        vehicle_year: vehicleData.vehicle_year,
+    }).eq('id', profile.id);
+
+    if (!error) {
+        setShowCompleteProfile(false);
+        alert("Details submitted! Verification pending.");
+        fetchDriverData();
+    } else {
+        alert(error.message);
+    }
   };
 
   const handleCreateRide = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!profile) return;
+    
+    if (!profile.is_verified) {
+        alert("You must be verified to post trips.");
+        return;
+    }
 
-    const departureTime = new Date(`${formData.date}T${formData.time}`).toISOString();
+    // Ensure we handle timezone correctly by treating input as local time
+    const departureTime = new Date(`${formData.date}T${formData.time}`);
 
     const { error } = await supabase.from('rides').insert({
-      driver_id: user.id,
+      driver_id: profile.id,
       origin: formData.origin,
       destination: formData.destination,
-      departure_time: departureTime,
+      departure_time: departureTime.toISOString(),
       total_seats: formData.seats,
       price_per_seat: formData.price,
       status: 'scheduled'
     });
 
     if (error) {
-      alert(error.message);
+      alert(`Error creating ride: ${error.message}`);
     } else {
       setShowForm(false);
-      fetchDriverData();
+      alert('Trip published successfully!');
       setFormData({ origin: '', destination: '', date: '', time: '', seats: 4, price: 0 });
+      // Refresh list
+      fetchDriverData();
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
       
+      {/* Complete Profile Modal */}
+      {showCompleteProfile && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+            <div className="bg-white p-8 rounded-3xl w-full max-w-lg relative animate-fade-in">
+                <button onClick={() => setShowCompleteProfile(false)} className="absolute top-6 right-6 text-slate-400 hover:text-black"><X/></button>
+                <div className="flex items-center gap-3 mb-6 text-orange-600">
+                    <AlertTriangle className="w-8 h-8"/>
+                    <h2 className="text-2xl font-bold text-slate-900">Action Required</h2>
+                </div>
+                <p className="text-slate-500 mb-6">To ensure safety on Veluxeride, please provide your vehicle and license details.</p>
+                
+                <form onSubmit={handleUpdateVehicle} className="space-y-4">
+                    <div>
+                        <label className="text-xs font-bold uppercase text-slate-500">Driver License Number</label>
+                        <input required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-black" 
+                            value={vehicleData.license_number} onChange={e => setVehicleData({...vehicleData, license_number: e.target.value})}
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-bold uppercase text-slate-500">Vehicle Model</label>
+                            <input required placeholder="e.g. Toyota Camry" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-black" 
+                                value={vehicleData.vehicle_model} onChange={e => setVehicleData({...vehicleData, vehicle_model: e.target.value})}
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold uppercase text-slate-500">Year</label>
+                            <input required placeholder="2018" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-black" 
+                                value={vehicleData.vehicle_year} onChange={e => setVehicleData({...vehicleData, vehicle_year: e.target.value})}
+                            />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold uppercase text-slate-500">License Plate</label>
+                        <input required placeholder="ABC-123DE" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-black" 
+                            value={vehicleData.vehicle_plate} onChange={e => setVehicleData({...vehicleData, vehicle_plate: e.target.value})}
+                        />
+                    </div>
+                    <button className="w-full bg-black text-white py-4 rounded-xl font-bold hover:bg-slate-800 transition">Submit for Verification</button>
+                </form>
+            </div>
+        </div>
+      )}
+
       <nav className="bg-white border-b border-slate-200 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-6 h-16 flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -110,7 +187,6 @@ export default function DriverDashboard() {
         
         <div className="grid lg:grid-cols-3 gap-8">
            
-           {/* Sidebar Stats */}
            <div className="space-y-6">
               {/* Earnings Card */}
               <div className="bg-black text-white p-6 rounded-3xl shadow-xl relative overflow-hidden">
@@ -124,6 +200,25 @@ export default function DriverDashboard() {
                  <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -mr-10 -mt-10"></div>
               </div>
 
+              {/* Status Alert */}
+              {profile && !profile.is_verified && (
+                  <div className="bg-orange-50 border border-orange-100 p-4 rounded-2xl flex gap-3 items-start">
+                      <Shield className="w-5 h-5 text-orange-600 shrink-0 mt-0.5"/>
+                      <div>
+                          <h4 className="font-bold text-orange-900 text-sm">Verification Pending</h4>
+                          <p className="text-xs text-orange-700 mt-1">You cannot accept rides until your documents are verified.</p>
+                          <button onClick={() => setShowCompleteProfile(true)} className="text-xs font-bold underline mt-2 hover:text-orange-900">Complete Profile</button>
+                      </div>
+                  </div>
+              )}
+              
+              {profile && profile.is_verified && (
+                  <div className="bg-green-50 border border-green-100 p-4 rounded-2xl flex gap-3 items-center">
+                      <CheckCircle className="w-5 h-5 text-green-600"/>
+                      <span className="font-bold text-green-800 text-sm">Account Verified</span>
+                  </div>
+              )}
+
               {/* Quick Actions */}
               <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
                  <h3 className="font-bold text-slate-900 mb-4">Quick Actions</h3>
@@ -135,25 +230,16 @@ export default function DriverDashboard() {
                        </div>
                        <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-black"/>
                     </button>
-                    <button className="w-full flex items-center justify-between p-4 rounded-xl bg-slate-50 hover:bg-slate-100 transition group text-left">
-                       <div className="flex items-center gap-3">
-                          <div className="bg-white p-2 rounded-lg shadow-sm border border-slate-100"><Shield className="w-5 h-5 text-black"/></div>
-                          <span className="font-bold text-sm">Documents</span>
-                       </div>
-                       <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-black"/>
-                    </button>
                  </div>
               </div>
            </div>
 
-           {/* Main Content */}
            <div className="lg:col-span-2">
               <div className="flex justify-between items-center mb-6">
                  <h2 className="text-xl font-bold text-slate-900">Upcoming Trajectories</h2>
                  <button onClick={() => setShowForm(true)} className="text-sm font-bold text-black underline hover:text-slate-600">Create New</button>
               </div>
 
-              {/* Ride Creation Modal */}
               {showForm && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                    <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-lg relative animate-fade-in">

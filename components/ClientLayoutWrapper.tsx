@@ -12,13 +12,19 @@ export default function ClientLayoutWrapper({
   const pathname = usePathname();
 
   // Define routes where the global header/footer should be hidden
-  const isDashboardRoute = pathname?.startsWith('/passenger') || pathname?.startsWith('/driver');
+  // Added '/auth' to this list for a clean login experience
+  const isIsolatedRoute = 
+    pathname?.startsWith('/passenger') || 
+    pathname?.startsWith('/driver') ||
+    pathname?.startsWith('/admin') ||
+    pathname?.startsWith('/staff') ||
+    pathname === '/auth';
 
   return (
     <>
-      {!isDashboardRoute && <SiteHeader />}
+      {!isIsolatedRoute && <SiteHeader />}
       {children}
-      {!isDashboardRoute && <SiteFooter />}
+      {!isIsolatedRoute && <SiteFooter />}
     </>
   );
 }

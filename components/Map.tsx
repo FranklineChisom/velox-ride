@@ -7,7 +7,7 @@ import L from 'leaflet';
 import { APP_CONFIG, IMAGES } from '@/lib/constants';
 import { Coordinates } from '@/types';
 
-// Fix for default marker icons in Leaflet with Next.js
+// Fix for default marker icons
 const customIcon = new L.Icon({
   iconUrl: IMAGES.mapMarkerIcon,
   iconRetinaUrl: IMAGES.mapMarkerIconRetina,
@@ -26,40 +26,38 @@ interface MapProps {
   selectionMode?: 'pickup' | 'dropoff' | null;
 }
 
-// Component to handle map clicks
 function LocationSelector({ onSelect }: { onSelect: (coords: Coordinates) => void }) {
   useMapEvents({
     click(e) {
-      onSelect({ lat: e.latlng.lat, lng: e.latlng.lng });
+      if (e && e.latlng) {
+        onSelect({ lat: e.latlng.lat, lng: e.latlng.lng });
+      }
     },
   });
   return null;
 }
 
-// Component to handle view updates without remounting the map
 function MapUpdater({ pickup, dropoff }: { pickup?: Coordinates; dropoff?: Coordinates }) {
   const map = useMap();
 
   useEffect(() => {
+    if (!map) return;
+
     if (pickup && dropoff) {
-      // If both points exist, fit bounds to show the route
-      const bounds = L.latLngBounds([
-        [pickup.lat, pickup.lng],
-        [dropoff.lat, dropoff.lng],
-      ]);
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
-    } else if (pickup) {
-      // If only pickup exists, fly to it
-      map.flyTo([pickup.lat, pickup.lng], 15, {
-        animate: true,
-        duration: 1.5
-      });
-    } else if (dropoff) {
-      // If only dropoff exists, fly to it
-      map.flyTo([dropoff.lat, dropoff.lng], 15, {
-        animate: true,
-        duration: 1.5
-      });
+      // Valid check before bounds
+      if (pickup.lat && pickup.lng && dropoff.lat && dropoff.lng) {
+        const bounds = L.latLngBounds([
+          [pickup.lat, pickup.lng],
+          [dropoff.lat, dropoff.lng],
+        ]);
+        if (bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+        }
+      }
+    } else if (pickup && pickup.lat && pickup.lng) {
+      map.flyTo([pickup.lat, pickup.lng], 15, { animate: true, duration: 1 });
+    } else if (dropoff && dropoff.lat && dropoff.lng) {
+      map.flyTo([dropoff.lat, dropoff.lng], 15, { animate: true, duration: 1 });
     }
   }, [pickup, dropoff, map]);
 
@@ -67,54 +65,41 @@ function MapUpdater({ pickup, dropoff }: { pickup?: Coordinates; dropoff?: Coord
 }
 
 export default function Map({ pickup, dropoff, routeCoordinates, onPickupSelect, onDropoffSelect, selectionMode }: MapProps) {
-  // We use a stable key for the MapContainer to prevent it from remounting unnecessarily.
-  // The map instance should be reused, and MapUpdater will handle view changes.
-  
   return (
     <div className="h-full w-full relative bg-slate-50 z-0">
       <MapContainer
         center={[APP_CONFIG.defaultCenter.lat, APP_CONFIG.defaultCenter.lng]}
-        zoom={13}
+        zoom={12}
         scrollWheelZoom={true} 
         style={{ height: '100%', width: '100%' }}
         className="z-0"
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
           url={IMAGES.mapTileLayer}
         />
 
-        {selectionMode === 'pickup' && onPickupSelect && (
-          <LocationSelector onSelect={onPickupSelect} />
-        )}
-        {selectionMode === 'dropoff' && onDropoffSelect && (
-          <LocationSelector onSelect={onDropoffSelect} />
-        )}
+        {(selectionMode === 'pickup' && onPickupSelect) && <LocationSelector onSelect={onPickupSelect} />}
+        {(selectionMode === 'dropoff' && onDropoffSelect) && <LocationSelector onSelect={onDropoffSelect} />}
 
-        {pickup && (
+        {pickup && pickup.lat && (
           <Marker position={[pickup.lat, pickup.lng]} icon={customIcon}>
-            <Popup>Pickup Location</Popup>
+            <Popup>Pickup</Popup>
           </Marker>
         )}
 
-        {dropoff && (
+        {dropoff && dropoff.lat && (
           <Marker position={[dropoff.lat, dropoff.lng]} icon={customIcon}>
-            <Popup>Dropoff Location</Popup>
+            <Popup>Dropoff</Popup>
           </Marker>
         )}
 
-        {routeCoordinates && (
-          <Polyline positions={routeCoordinates} color="#F59E0B" weight={5} opacity={0.8} />
+        {routeCoordinates && routeCoordinates.length > 0 && (
+          <Polyline positions={routeCoordinates} color="#000000" weight={4} opacity={0.7} />
         )}
 
         <MapUpdater pickup={pickup} dropoff={dropoff} />
       </MapContainer>
-      
-      {selectionMode && (
-        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[1000] bg-black text-white px-6 py-2.5 rounded-full text-sm font-semibold shadow-xl animate-bounce">
-          Tap map to select {selectionMode}
-        </div>
-      )}
     </div>
   );
 }

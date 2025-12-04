@@ -12,7 +12,7 @@ const config: Config = {
         sans: ['var(--font-jakarta)', 'sans-serif'],
       },
       colors: {
-        velox: {
+        Veluxeride: {
           gold: '#F59E0B',      // Amber-500
           goldHover: '#D97706', // Amber-600
           black: '#020617',     // Slate-950

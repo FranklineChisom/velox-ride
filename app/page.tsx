@@ -483,7 +483,7 @@ export default function Home() {
          <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white/5 rounded-full blur-[100px] pointer-events-none"></div>
          <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-12 relative z-10">
             <div className="md:w-1/2 px-6">
-               <h2 className="text-4xl lg:text-5xl font-bold mb-6">Velox on the go.</h2>
+               <h2 className="text-4xl lg:text-5xl font-bold mb-6">Veluxeride on the go.</h2>
                <p className="text-slate-400 text-lg mb-8 max-w-md">
                  Download the Veluxeride app for iOS and Android. Book rides, track drivers, and manage payments effortlessly.
                </p>

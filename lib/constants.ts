@@ -68,7 +68,7 @@ export const PASSENGER_NAV = [
   { label: 'Support', href: '/passenger/support', icon: 'HelpCircle' },
 ];
 
-// Driver Dashboard Nav (Concept)
+// Driver Dashboard Nav
 export const DRIVER_NAV = [
   { label: 'Dashboard', href: '/driver', icon: 'Home' },
   { label: 'Trips', href: '/driver/trips', icon: 'Map' },
@@ -81,6 +81,13 @@ export const STAFF_NAV = [
   { label: 'Overview', href: '/staff', icon: 'LayoutDashboard' },
   { label: 'User Support', href: '/staff/users', icon: 'Users' },
   { label: 'Ride Monitor', href: '/staff/rides', icon: 'Activity' },
+];
+
+// Manager Nav
+export const MANAGER_NAV = [
+  { label: 'Dashboard', href: '/manager', icon: 'LayoutDashboard' },
+  { label: 'User Management', href: '/manager', icon: 'Users' }, // Single page for demo
+  { label: 'Ride Oversight', href: '/manager/rides', icon: 'Activity' },
 ];
 
 // Superadmin Nav

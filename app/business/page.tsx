@@ -8,7 +8,7 @@ export default function BusinessPage() {
     <div className="pt-32 pb-20 w-[90%] md:w-[85%] mx-auto min-h-screen">
       <section className="mb-24 text-center max-w-4xl mx-auto">
          <h1 className="text-6xl font-bold mb-6 text-slate-900 leading-tight">
-           Velox for Business
+           Veluxeride for Business
          </h1>
          <p className="text-xl text-slate-500 mb-8 leading-relaxed max-w-2xl mx-auto">
            Move your people and guests with ease. A powerful platform to manage rides, meals, and local deliveries for companies of all sizes.

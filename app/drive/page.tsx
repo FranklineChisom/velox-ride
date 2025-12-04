@@ -26,7 +26,7 @@ export default function DrivePage() {
       </section>
 
       <section className="bg-black text-white p-12 rounded-[2.5rem] mb-24 shadow-2xl">
-          <h2 className="text-3xl font-bold mb-12 text-center">Why drive with Velox?</h2>
+          <h2 className="text-3xl font-bold mb-12 text-center">Why drive with Veluxeride?</h2>
           <div className="grid md:grid-cols-3 gap-12">
             <div className="text-center">
                 <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-6">
