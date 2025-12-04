@@ -5,8 +5,8 @@ import { Inter } from 'next/font/google';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'VeloxRide',
-  description: 'Affordable scheduled ride-sharing in Nigeria',
+  title: 'VeloxRide | Smart Urban Mobility',
+  description: 'Schedule rides, split fares, and travel comfortably in Abuja and Lagos.',
 };
 
 export default function RootLayout({
@@ -15,12 +15,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
-        <main className="min-h-screen bg-gray-50 text-gray-900">
-          {children}
-        </main>
-      </body>
+    // Added suppressHydrationWarning to ignore browser extension attributes
+    <html lang="en" suppressHydrationWarning>
+      <body className={inter.className}>{children}</body>
     </html>
   );
 }
