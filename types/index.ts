@@ -8,7 +8,6 @@ export interface Profile {
   role: UserRole;
   is_verified: boolean;
   avatar_url?: string;
-  // Driver specific fields
   license_number?: string;
   vehicle_model?: string;
   vehicle_year?: string;
@@ -36,7 +35,10 @@ export interface Booking {
   ride_id: string;
   passenger_id: string;
   seats_booked: number;
-  status: 'confirmed' | 'cancelled';
+  status: 'confirmed' | 'cancelled' | 'pending_payment';
+  payment_method: 'card' | 'wallet' | 'cash';
+  payment_status: 'paid' | 'pending';
+  payment_reference?: string; // Paystack reference
   created_at: string;
 }
 
@@ -57,6 +59,8 @@ export interface Transaction {
   amount: number;
   type: 'credit' | 'debit';
   description: string;
+  reference?: string; // Paystack reference
+  status: 'success' | 'failed' | 'pending';
   created_at: string;
 }
 

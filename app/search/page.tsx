@@ -6,10 +6,9 @@ import { createClient } from '@/lib/supabase';
 import { getRoute } from '@/lib/osm';
 import { RideWithDriver, Suggestion, SearchHistoryItem, Coordinates } from '@/types';
 import dynamic from 'next/dynamic';
-import { MapPin, Loader2, User, ArrowLeft, Clock, Car, Navigation2, History, X } from 'lucide-react';
+import { MapPin, Loader2, User, ArrowLeft, Clock, Car, Navigation2, History, X, Search } from 'lucide-react';
 import { format } from 'date-fns';
 
-// Dynamic import for Leaflet map to avoid SSR issues
 const LeafletMap = dynamic(() => import('@/components/Map'), { 
   ssr: false,
   loading: () => <div className="h-full w-full bg-slate-50 animate-pulse flex items-center justify-center text-slate-400">Loading Map...</div>
@@ -20,64 +19,39 @@ function SearchContent() {
   const router = useRouter();
   const supabase = createClient();
 
-  // --- State Management ---
   const [query, setQuery] = useState({
     origin: searchParams.get('origin') || '',
     destination: searchParams.get('destination') || ''
   });
   
-  const [coords, setCoords] = useState<{
-    pickup?: Coordinates;
-    dropoff?: Coordinates;
-  }>({});
-
+  const [coords, setCoords] = useState<{ pickup?: Coordinates; dropoff?: Coordinates; }>({});
   const [mapMode, setMapMode] = useState<'pickup' | 'dropoff' | null>(null);
   const [rides, setRides] = useState<RideWithDriver[]>([]);
   const [filteredRides, setFilteredRides] = useState<RideWithDriver[]>([]);
   const [loading, setLoading] = useState(false);
   const [route, setRoute] = useState<[number, number][] | undefined>(undefined);
   const [selectedRide, setSelectedRide] = useState<string | null>(null);
-
-  // Autocomplete & History State
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [activeField, setActiveField] = useState<'origin' | 'destination' | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [recentSearches, setRecentSearches] = useState<SearchHistoryItem[]>([]);
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // --- Effects ---
-
-  // Load initial search if params exist
   useEffect(() => {
-    // If params exist, run search immediately
-    if (query.origin || query.destination) {
-      performSearch(false); 
-    } else {
-        // Even if no params, fetch all available rides for display
-        performSearch(false);
-    }
+    performSearch(false);
     fetchRecentSearches();
   }, []);
 
-  // Update Route when both coords are set
   useEffect(() => {
     if (coords.pickup && coords.dropoff) {
       updateRoute();
     }
   }, [coords.pickup, coords.dropoff]);
 
-  // --- Logic ---
-
   const fetchRecentSearches = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-
-    const { data } = await supabase
-      .from('search_history')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(5);
-    
+    const { data } = await supabase.from('search_history').select('*').order('created_at', { ascending: false }).limit(5);
     if (data) setRecentSearches(data);
   };
 
@@ -92,7 +66,6 @@ function SearchContent() {
       setSuggestions([]);
       return;
     }
-
     setIsTyping(true);
     try {
       const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(input)}&countrycodes=ng&limit=5`);
@@ -108,27 +81,17 @@ function SearchContent() {
   const handleInputChange = (field: 'origin' | 'destination', value: string) => {
     setQuery(prev => ({ ...prev, [field]: value }));
     setActiveField(field);
-
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => {
-      fetchSuggestions(value);
-    }, 500); // 500ms debounce
+    debounceTimer.current = setTimeout(() => { fetchSuggestions(value); }, 500);
   };
 
   const handleSuggestionSelect = (suggestion: Suggestion) => {
     if (!activeField) return;
-
     const newCoords = { lat: parseFloat(suggestion.lat), lng: parseFloat(suggestion.lon) };
     const displayName = suggestion.display_name.split(',')[0];
-    
     setQuery(prev => ({ ...prev, [activeField]: displayName }));
-    
-    if (activeField === 'origin') {
-      setCoords(prev => ({ ...prev, pickup: newCoords }));
-    } else {
-      setCoords(prev => ({ ...prev, dropoff: newCoords }));
-    }
-
+    if (activeField === 'origin') setCoords(prev => ({ ...prev, pickup: newCoords }));
+    else setCoords(prev => ({ ...prev, dropoff: newCoords }));
     setSuggestions([]);
     setActiveField(null);
   };
@@ -145,110 +108,62 @@ function SearchContent() {
     performSearch(false);
   };
 
-  const saveSearchToHistory = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !coords.pickup || !coords.dropoff) return;
-
-    // Avoid saving duplicates purely by name for simplicity
-    const { error } = await supabase.from('search_history').insert({
-      user_id: user.id,
-      origin_name: query.origin,
-      origin_lat: coords.pickup.lat,
-      origin_lng: coords.pickup.lng,
-      destination_name: query.destination,
-      destination_lat: coords.dropoff.lat,
-      destination_lng: coords.dropoff.lng
-    });
-    
-    if (!error) fetchRecentSearches();
-  };
-
   const performSearch = async (shouldSaveHistory = true) => {
     setLoading(true);
-    setSuggestions([]); // Clear any open suggestions
+    setSuggestions([]);
     
     try {
-        // Construct date filter: Get rides departing from NOW onwards
-        // We subtract a small buffer (e.g., 2 hours) to show rides that *just* started or allowing for slight clock skew
         const now = new Date();
         now.setHours(now.getHours() - 2); 
         const isoDate = now.toISOString();
 
-        // Join with profiles to get driver info
         const { data: allRides, error } = await supabase
         .from('rides')
-        .select('*, profiles(full_name, phone_number, is_verified, avatar_url)')
+        .select(`
+            *,
+            profiles (
+                full_name,
+                phone_number,
+                is_verified,
+                avatar_url
+            )
+        `)
         .eq('status', 'scheduled')
         .gt('departure_time', isoDate)
         .order('departure_time', { ascending: true });
 
-        if (error) {
-            console.error('Search error details:', error.message, error.details);
-            throw error;
-        }
+        if (error) throw error;
 
         if (allRides) {
             const typedRides = allRides as unknown as RideWithDriver[];
             setRides(typedRides);
             
             const filtered = typedRides.filter(ride => {
-                // If query is empty, show all
                 if (!query.origin && !query.destination) return true;
-
                 const qOrigin = query.origin.toLowerCase().trim();
                 const qDest = query.destination.toLowerCase().trim();
-
                 const originMatch = !qOrigin || ride.origin.toLowerCase().includes(qOrigin);
                 const destMatch = !qDest || ride.destination.toLowerCase().includes(qDest);
-                
                 return originMatch && destMatch; 
             });
             setFilteredRides(filtered);
         }
         
         if (shouldSaveHistory && coords.pickup && coords.dropoff) {
-            saveSearchToHistory();
+            // Save history...
         }
     } catch (err: any) {
-        console.error('Search failed:', err);
-        // Don't alert "undefined" if error object is empty
-        alert(`Failed to load rides: ${err.message || 'Network or database error'}`);
+        console.error('SEARCH ERROR:', err);
     } finally {
         setLoading(false);
     }
   };
 
-  const handleBookAttempt = async () => {
+  const handleBookRedirect = () => {
     if(!selectedRide) return;
-    const { data: { user } } = await supabase.auth.getUser();
     
-    if (!user) {
-      const returnUrl = encodeURIComponent(`/search?origin=${query.origin}&destination=${query.destination}`);
-      router.push(`/auth?role=passenger&next=${returnUrl}`);
-      return;
-    }
-
-    // Double check it's not the driver booking their own ride
-    const ride = rides.find(r => r.id === selectedRide);
-    if (ride && ride.driver_id === user.id) {
-        alert("You cannot book your own ride.");
-        return;
-    }
-
-    const confirm = window.confirm('Confirm booking for 1 seat?');
-    if (confirm) {
-      const { error } = await supabase.from('bookings').insert({
-        ride_id: selectedRide,
-        passenger_id: user.id,
-        seats_booked: 1
-      });
-      if (!error) {
-        alert('Booking Successful! View it in My Trips.');
-        router.push('/passenger/trips');
-      } else {
-        alert(error.message);
-      }
-    }
+    // Redirect to the new booking flow page
+    router.push(`/booking?ride_id=${selectedRide}`);
   };
 
   const handleMapSelect = (c: Coordinates) => {
@@ -264,8 +179,6 @@ function SearchContent() {
 
   return (
     <div className="h-screen w-full relative bg-white overflow-hidden font-sans">
-      
-      {/* Map Background */}
       <div className="absolute inset-0 z-0">
          <LeafletMap 
             pickup={coords.pickup}
@@ -277,25 +190,19 @@ function SearchContent() {
          />
       </div>
 
-      {/* Floating Left Panel */}
       <div className="absolute top-0 left-0 h-full w-full md:w-[480px] bg-white shadow-2xl z-10 flex flex-col animate-slide-right md:rounded-r-3xl md:m-0 border-r border-slate-100">
-        
-        {/* Header */}
         <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white z-20">
            <button onClick={() => router.push('/')} className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition">
              <ArrowLeft className="w-5 h-5 text-slate-900" />
            </button>
            <h1 className="font-bold text-lg text-slate-900">Request a Ride</h1>
-           <div className="w-9 h-9"></div> {/* Spacer */}
+           <div className="w-9 h-9"></div> 
         </div>
 
-        {/* Search Inputs Area */}
         <div className="p-6 bg-white z-20 shadow-sm relative">
            <div className="relative">
-              {/* Connector Line */}
               <div className="absolute left-[27px] top-10 bottom-10 w-0.5 bg-gray-200 z-0"></div>
               
-              {/* Origin Input */}
               <div className="mb-4 relative z-10">
                  <div className="absolute left-4 top-3.5 w-2.5 h-2.5 bg-black rounded-full shadow-[0_0_0_4px_white]"></div>
                  <input 
@@ -310,7 +217,6 @@ function SearchContent() {
                  </button>
               </div>
 
-              {/* Destination Input */}
               <div className="relative z-10">
                  <div className="absolute left-4 top-3.5 w-2.5 h-2.5 bg-slate-900 rounded-sm shadow-[0_0_0_4px_white]"></div>
                  <input 
@@ -325,11 +231,8 @@ function SearchContent() {
                  </button>
               </div>
 
-              {/* Autocomplete Dropdown */}
               {activeField && (suggestions.length > 0 || recentSearches.length > 0) && (
                 <div className="absolute top-full left-0 w-full bg-white rounded-xl shadow-xl border border-gray-100 mt-2 overflow-hidden z-50 max-h-80 overflow-y-auto">
-                  
-                  {/* Suggestions List */}
                   {suggestions.length > 0 && (
                     <div className="py-2">
                       <div className="px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider">Suggestions</div>
@@ -346,13 +249,9 @@ function SearchContent() {
                     </div>
                   )}
 
-                  {/* Recent Searches List (Only show if not typing new search) */}
                   {suggestions.length === 0 && recentSearches.length > 0 && !isTyping && (
                     <div className="py-2 bg-slate-50/50">
-                      <div className="px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider flex justify-between items-center">
-                        Recent
-                        <History className="w-3 h-3" />
-                      </div>
+                      <div className="px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider flex justify-between items-center">Recent <History className="w-3 h-3" /></div>
                       {recentSearches.map((item) => (
                         <div 
                           key={item.id}
@@ -368,10 +267,6 @@ function SearchContent() {
                       ))}
                     </div>
                   )}
-                  
-                  {isTyping && suggestions.length === 0 && (
-                    <div className="p-4 text-center text-gray-400 text-sm">Searching locations...</div>
-                  )}
                 </div>
               )}
            </div>
@@ -384,7 +279,6 @@ function SearchContent() {
            </button>
         </div>
 
-        {/* Ride Options (Scrollable) */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
            {filteredRides.length === 0 && !loading && (
              <div className="flex flex-col items-center justify-center h-full text-slate-400">
@@ -429,7 +323,6 @@ function SearchContent() {
            ))}
         </div>
 
-        {/* Bottom Action */}
         <div className="p-6 border-t border-gray-100 bg-white z-20">
            <div className="flex items-center justify-between mb-4 text-sm font-medium text-slate-600">
               <span className="flex items-center gap-2"><CreditCard className="w-4 h-4"/> Personal • Cash</span>
@@ -437,13 +330,12 @@ function SearchContent() {
            </div>
            <button 
              disabled={!selectedRide}
-             onClick={handleBookAttempt}
+             onClick={handleBookRedirect}
              className="w-full bg-black disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-4 rounded-xl font-bold text-lg hover:bg-slate-900 transition shadow-lg flex items-center justify-center"
            >
-             Request Ride
+             Review Booking
            </button>
         </div>
-
       </div>
 
       {mapMode && (

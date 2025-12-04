@@ -4,6 +4,13 @@ export const APP_CONFIG = {
   name: 'Veluxeride',
   currency: '₦',
   defaultCenter: { lat: 9.0765, lng: 7.3986 }, // Abuja
+  paystackPublicKey: 'pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', // Replace with your actual key
+};
+
+export const PAYMENT_METHODS = {
+  CARD: 'card',
+  WALLET: 'wallet',
+  CASH: 'cash',
 };
 
 export const LINKS = {
