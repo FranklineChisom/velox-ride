@@ -5,58 +5,65 @@
 }
 
 :root {
-  /* Midnight & Gold Palette */
-  --foreground-rgb: 248, 250, 252; /* White text */
-  --background-rgb: 2, 6, 23;      /* Midnight background */
-  
-  --primary-gold: 226, 185, 59;
-  --surface-navy: 15, 23, 42;
+  --foreground-rgb: 2, 6, 23;
+  --background-rgb: 255, 255, 255;
 }
 
 body {
   color: rgb(var(--foreground-rgb));
   background: rgb(var(--background-rgb));
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Premium Glass Effect for Dark Mode */
-.glass-panel {
-  background: rgba(15, 23, 42, 0.7);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(226, 185, 59, 0.1); /* Subtle gold border */
-}
-
-.glass-nav {
-  background: rgba(2, 6, 23, 0.85);
-  backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-/* Dark Map Filter */
-.map-dark-mode .leaflet-layer,
-.map-dark-mode .leaflet-control-zoom-in,
-.map-dark-mode .leaflet-control-zoom-out,
-.map-dark-mode .leaflet-control-attribution {
-  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
-}
-
-/* Smooth Scrolling */
-html {
-  scroll-behavior: smooth;
+/* Fix for shadow clipping on some devices */
+* {
+  box-sizing: border-box;
 }
 
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
-  background: #020617;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: #FFFFFF;
 }
 ::-webkit-scrollbar-thumb {
-  background-color: #334155;
-  border-radius: 20px;
+  background-color: #E2E8F0;
+  border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background-color: #E2B93B;
+  background-color: #CBD5E1;
+}
+
+/* Glass effect */
+.glass-nav {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+}
+
+/* Map Overrides */
+.leaflet-container {
+  background-color: #F8FAFC !important;
+  font-family: var(--font-jakarta), sans-serif;
+}
+.leaflet-popup-content-wrapper {
+  background: #FFFFFF !important;
+  color: #0F172A !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+  border-radius: 12px !important;
+  border: none !important;
+  padding: 0 !important;
+}
+.leaflet-popup-content {
+  margin: 12px !important;
+  font-weight: 600;
+}
+.leaflet-popup-tip {
+  background: #FFFFFF !important;
+}
+.leaflet-popup-close-button {
+  color: #64748B !important;
 }

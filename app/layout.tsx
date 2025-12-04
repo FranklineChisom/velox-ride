@@ -9,8 +9,8 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'VeloxRide | Elite Urban Mobility',
-  description: 'Experience the premium standard of scheduled ride-sharing in Nigeria.',
+  title: 'VeloxRide | Modern Urban Mobility',
+  description: 'The smart way to move. Scheduled rides, shared costs, verified drivers.',
 };
 
 export default function RootLayout({
@@ -20,7 +20,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning className={jakarta.variable}>
-      <body className={`${jakarta.className} antialiased bg-velox-midnight text-velox-white selection:bg-velox-gold selection:text-velox-midnight`}>
+      <body className={`${jakarta.className} antialiased bg-white text-velox-black selection:bg-velox-gold selection:text-white`}>
         {children}
       </body>
     </html>

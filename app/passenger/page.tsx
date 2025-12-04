@@ -3,179 +3,146 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import { Ride } from '@/types';
 import { format } from 'date-fns';
-import { MapPin, Search, Clock, CreditCard, Loader2 } from 'lucide-react';
+import { MapPin, Search, Clock, CreditCard, Loader2, LogOut, Home as HomeIcon, Briefcase, Star, Settings, User } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { searchLocation, getRoute } from '@/lib/osm';
 import dynamic from 'next/dynamic';
 
 const LeafletMap = dynamic(() => import('@/components/Map'), { 
   ssr: false,
-  loading: () => <div className="h-full w-full bg-velox-midnight animate-pulse flex items-center justify-center text-gray-600">Loading Map...</div>
+  loading: () => <div className="h-full w-full bg-gray-50 flex items-center justify-center text-slate-400">Loading Map...</div>
 });
 
 export default function PassengerDashboard() {
   const supabase = createClient();
   const router = useRouter();
+  const [activeView, setActiveView] = useState<'home' | 'trips' | 'wallet'>('home');
   const [rides, setRides] = useState<Ride[]>([]);
   const [loading, setLoading] = useState(false);
+  const [userProfile, setUserProfile] = useState<any>(null);
   
   // Map State
   const [pickupCoords, setPickupCoords] = useState<{lat: number, lng: number} | undefined>(undefined);
   const [dropoffCoords, setDropoffCoords] = useState<{lat: number, lng: number} | undefined>(undefined);
   const [routePath, setRoutePath] = useState<[number, number][] | undefined>(undefined);
 
-  const [search, setSearch] = useState({
-    from: '',
-    to: '',
-  });
+  useEffect(() => {
+    getUser();
+  }, []);
+
+  const getUser = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if(user) setUserProfile(user);
+  }
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push('/');
   };
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-
-    const pickup = await searchLocation(search.from);
-    const dropoff = await searchLocation(search.to);
-
-    if (pickup) setPickupCoords(pickup);
-    if (dropoff) setDropoffCoords(dropoff);
-
-    if (pickup && dropoff) {
-      const route = await getRoute(pickup, dropoff);
-      if (route) setRoutePath(route);
-    }
-
-    let query = supabase
-      .from('rides')
-      .select('*, profiles(full_name)')
-      .eq('status', 'scheduled')
-      .gt('departure_time', new Date().toISOString());
-
-    if (search.from) query = query.ilike('origin', `%${search.from}%`);
-    if (search.to) query = query.ilike('destination', `%${search.to}%`);
-
-    const { data, error } = await query;
-    if (data) setRides(data as any);
-    
-    setLoading(false);
-  };
-
-  const handleBook = async (rideId: string, price: number) => {
-    const confirm = window.confirm(`Confirm booking for ₦${price}?`);
-    if (!confirm) return;
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { error } = await supabase.from('bookings').insert({
-      ride_id: rideId,
-      passenger_id: user.id,
-      seats_booked: 1
-    });
-
-    if (error) alert('Booking failed: ' + error.message);
-    else alert('Booking confirmed! Driver will be notified.');
-  };
+  const SavedPlace = ({ icon, label, address }: { icon: any, label: string, address: string }) => (
+    <div className="flex items-center gap-4 p-3 hover:bg-slate-50 rounded-xl cursor-pointer transition">
+      <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-700">
+        {icon}
+      </div>
+      <div>
+        <div className="font-bold text-slate-900 text-sm">{label}</div>
+        <div className="text-xs text-slate-500">{address}</div>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-velox-midnight flex flex-col md:flex-row">
-      {/* Sidebar Panel */}
-      <div className="w-full md:w-1/2 lg:w-1/3 flex flex-col h-screen overflow-y-auto z-10 bg-velox-navy border-r border-white/5 shadow-2xl">
-        <nav className="flex justify-between items-center p-6 border-b border-white/5">
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            <span className="text-velox-gold">Velox</span>Passenger
-          </h1>
-          <button onClick={handleLogout} className="text-xs font-bold text-gray-500 hover:text-white uppercase tracking-wider transition">Sign Out</button>
-        </nav>
+    <div className="h-screen bg-white flex overflow-hidden font-sans">
+      
+      {/* Sidebar Navigation */}
+      <div className="w-20 bg-white border-r border-slate-100 flex flex-col items-center py-8 z-30">
+         <div className="w-10 h-10 bg-black text-white rounded-xl flex items-center justify-center font-bold text-xl mb-12">V</div>
+         
+         <div className="space-y-8 flex-1">
+            <NavIcon icon={<HomeIcon />} label="Home" active={activeView === 'home'} onClick={() => setActiveView('home')} />
+            <NavIcon icon={<Clock />} label="Trips" active={activeView === 'trips'} onClick={() => setActiveView('trips')} />
+            <NavIcon icon={<CreditCard />} label="Wallet" active={activeView === 'wallet'} onClick={() => setActiveView('wallet')} />
+            <NavIcon icon={<Settings />} label="Settings" active={false} onClick={() => {}} />
+         </div>
 
-        <div className="p-6">
-            {/* Search Box */}
-            <div className="bg-velox-midnight p-5 rounded-2xl border border-white/5 mb-8 shadow-inner">
-                <h2 className="text-xs font-bold text-velox-gold uppercase tracking-wider mb-4">Route Selection</h2>
-                <form onSubmit={handleSearch} className="space-y-3">
-                    <div className="relative">
-                        <MapPin className="absolute left-3 top-3.5 text-gray-500 w-5 h-5" />
-                        <input 
-                            type="text" 
-                            placeholder="Pickup Location"
-                            className="w-full pl-10 pr-4 py-3 bg-velox-navy border border-white/10 rounded-xl focus:ring-1 focus:ring-velox-gold focus:outline-none transition text-white placeholder-gray-600"
-                            value={search.from}
-                            onChange={e => setSearch({...search, from: e.target.value})}
-                        />
-                    </div>
-                    <div className="relative">
-                        <MapPin className="absolute left-3 top-3.5 text-gray-500 w-5 h-5" />
-                        <input 
-                            type="text" 
-                            placeholder="Destination"
-                            className="w-full pl-10 pr-4 py-3 bg-velox-navy border border-white/10 rounded-xl focus:ring-1 focus:ring-velox-gold focus:outline-none transition text-white placeholder-gray-600"
-                            value={search.to}
-                            onChange={e => setSearch({...search, to: e.target.value})}
-                        />
-                    </div>
-                    <button 
-                      type="submit" 
-                      disabled={loading}
-                      className="w-full bg-white text-velox-midnight py-3 rounded-xl font-bold hover:bg-gray-200 transition flex items-center justify-center mt-2"
-                    >
-                        {loading ? <Loader2 className="animate-spin w-5 h-5" /> : 'Find Available Rides'}
-                    </button>
-                </form>
+         <button onClick={handleLogout} className="p-3 text-slate-400 hover:text-red-600 transition">
+           <LogOut className="w-6 h-6" />
+         </button>
+      </div>
+
+      {/* Main Content Panel */}
+      <div className="w-[400px] bg-white border-r border-slate-100 flex flex-col z-20 shadow-xl">
+         
+         {/* User Header */}
+         <div className="p-6 border-b border-slate-50 flex items-center justify-between">
+            <div>
+              <h2 className="font-bold text-xl text-slate-900">Good Afternoon</h2>
+              <p className="text-sm text-slate-500">{userProfile?.user_metadata?.full_name || 'Passenger'}</p>
             </div>
+            <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center">
+              <User className="w-5 h-5 text-slate-600" />
+            </div>
+         </div>
 
-            {/* Results */}
-            <div className="space-y-4">
-                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Matches</h3>
-                {!loading && rides.length === 0 && <p className="text-gray-600 text-sm italic">No rides found matching your route.</p>}
-                
-                {rides.map((ride: any) => (
-                    <div key={ride.id} className="bg-velox-midnight p-5 rounded-2xl border border-white/5 hover:border-velox-gold/50 transition cursor-pointer group">
-                        <div className="flex justify-between items-start">
-                            <div className="space-y-2">
-                                <div className="text-xl font-bold text-white">
-                                    {format(new Date(ride.departure_time), 'h:mm a')}
-                                </div>
-                                
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2">
-                                      <div className="w-1.5 h-1.5 rounded-full bg-velox-gold"></div>
-                                      <span className="font-medium text-gray-400 text-sm">{ride.origin}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                      <div className="w-1.5 h-1.5 rounded-full bg-white"></div>
-                                      <span className="font-medium text-gray-400 text-sm">{ride.destination}</span>
-                                  </div>
-                                </div>
+         {/* Scrollable Content */}
+         <div className="flex-1 overflow-y-auto p-6">
+            
+            {activeView === 'home' && (
+              <>
+                {/* Search Trigger */}
+                <div 
+                  onClick={() => router.push('/search')}
+                  className="bg-slate-50 p-4 rounded-xl flex items-center gap-3 cursor-pointer hover:bg-slate-100 transition mb-8 ring-1 ring-slate-200"
+                >
+                   <Search className="w-5 h-5 text-slate-900" />
+                   <span className="font-bold text-slate-700">Where are you going?</span>
+                </div>
 
-                                <div className="pt-2 flex items-center gap-2 text-xs text-gray-500 font-bold uppercase tracking-wider">
-                                    <span className="text-velox-gold">{ride.profiles?.full_name}</span>
-                                    <span>•</span>
-                                    <span>{ride.total_seats} seats</span>
-                                </div>
-                            </div>
+                {/* Saved Places */}
+                <div className="mb-8">
+                   <SavedPlace icon={<HomeIcon className="w-5 h-5" />} label="Home" address="Set your home address" />
+                   <SavedPlace icon={<Briefcase className="w-5 h-5" />} label="Work" address="Set your work address" />
+                </div>
 
-                            <div className="text-right flex flex-col justify-between h-full">
-                                <div className="text-lg font-bold text-white">₦{ride.price_per_seat}</div>
-                                <button 
-                                    onClick={() => handleBook(ride.id, ride.price_per_seat)}
-                                    className="mt-4 bg-velox-gold text-velox-midnight px-4 py-2 rounded-lg text-xs font-bold hover:bg-yellow-400 transition shadow-lg shadow-velox-gold/10"
-                                >
-                                    Book
-                                </button>
-                            </div>
+                {/* Recent Activity Mock */}
+                <div>
+                   <h3 className="font-bold text-slate-900 mb-4">Recent</h3>
+                   <div className="space-y-4">
+                      {[1,2].map(i => (
+                        <div key={i} className="flex gap-4 items-center">
+                           <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center"><MapPin className="w-5 h-5 text-slate-500"/></div>
+                           <div className="flex-1 border-b border-slate-50 pb-4">
+                              <div className="font-bold text-slate-900 text-sm">Gwarinpa Estate</div>
+                              <div className="text-xs text-slate-500">Abuja • 12km</div>
+                           </div>
                         </div>
-                    </div>
-                ))}
-            </div>
-        </div>
+                      ))}
+                   </div>
+                </div>
+              </>
+            )}
+
+            {activeView === 'trips' && (
+               <div className="text-center py-20 text-slate-400">
+                 <Clock className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                 <p>Your ride history will appear here.</p>
+               </div>
+            )}
+
+            {activeView === 'wallet' && (
+               <div className="bg-black text-white p-6 rounded-2xl mb-6 shadow-xl">
+                  <div className="text-sm opacity-70 mb-1">Velox Balance</div>
+                  <div className="text-3xl font-bold mb-4">₦0.00</div>
+                  <button className="bg-white/20 hover:bg-white/30 w-full py-2 rounded-lg text-sm font-bold transition">Add Funds</button>
+               </div>
+            )}
+
+         </div>
       </div>
 
       {/* Map Area */}
-      <div className="hidden md:block flex-1 h-screen sticky top-0 bg-velox-midnight">
+      <div className="flex-1 h-full relative bg-slate-50">
          <LeafletMap 
             pickup={pickupCoords} 
             dropoff={dropoffCoords} 
@@ -184,4 +151,15 @@ export default function PassengerDashboard() {
       </div>
     </div>
   );
+}
+
+function NavIcon({ icon, label, active, onClick }: any) {
+  return (
+    <div onClick={onClick} className={`flex flex-col items-center gap-1 cursor-pointer transition group ${active ? 'text-black' : 'text-slate-400 hover:text-slate-600'}`}>
+       <div className={`p-2 rounded-xl ${active ? 'bg-slate-100' : 'group-hover:bg-slate-50'}`}>
+         {icon}
+       </div>
+       <span className="text-[10px] font-bold">{label}</span>
+    </div>
+  )
 }

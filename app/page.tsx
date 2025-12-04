@@ -1,378 +1,619 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase';
 import { 
-  Car, 
-  Users, 
-  ShieldCheck, 
-  Wallet, 
-  Calendar, 
-  Briefcase, 
-  Map as MapIcon, 
-  Smartphone,
+  ArrowRight, 
+  ShieldCheck,
   Menu, 
   X,
-  ChevronDown,
-  ArrowRight,
-  Star
+  MapPin,
+  Smartphone,
+  Clock,
+  UserCheck,
+  Zap,
+  Navigation,
+  History,
+  Loader2,
+  CalendarDays,
+  ArrowUpDown
 } from 'lucide-react';
+
+// --- Types ---
+interface Suggestion {
+  place_id: number;
+  display_name: string;
+  lat: string;
+  lon: string;
+}
+
+interface SearchHistoryItem {
+  id: string;
+  destination_name: string;
+  created_at: string;
+}
 
 export default function Home() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'ride' | 'drive'>('ride');
+  const supabase = createClient();
+  
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [activeFaq, setActiveFaq] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<'schedule' | 'now'>('schedule');
   
   // Search State
-  const [search, setSearch] = useState({ origin: '', destination: '' });
+  const [pickup, setPickup] = useState('');
+  const [dropoff, setDropoff] = useState('');
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('');
+  
+  // Autocomplete State
+  const [activeField, setActiveField] = useState<'pickup' | 'dropoff' | null>(null);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [history, setHistory] = useState<SearchHistoryItem[]>([]);
+  const [loadingLocation, setLoadingLocation] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
-  const toggleFaq = (index: number) => {
-    setActiveFaq(activeFaq === index ? null : index);
+  useEffect(() => {
+    fetchUserHistory();
+    function handleClickOutside(event: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setActiveField(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const fetchUserHistory = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data } = await supabase
+      .from('search_history')
+      .select('id, destination_name, created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(3);
+    
+    if (data) setHistory(data);
   };
 
-  const handleSearch = () => {
+  const fetchSuggestions = async (query: string) => {
+    if (!query || query.length < 3) {
+      setSuggestions([]);
+      return;
+    }
+
+    setIsTyping(true);
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=ng&limit=5`);
+      const data = await res.json();
+      setSuggestions(data);
+    } catch (error) {
+      console.error("Autocomplete error:", error);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  const handleInputChange = (field: 'pickup' | 'dropoff', value: string) => {
+    if (field === 'pickup') setPickup(value);
+    else setDropoff(value);
+    
+    setActiveField(field);
+
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => {
+      fetchSuggestions(value);
+    }, 400);
+  };
+
+  const handleSelectSuggestion = (suggestion: Suggestion) => {
+    const simpleName = suggestion.display_name.split(',')[0];
+    if (activeField === 'pickup') setPickup(simpleName);
+    else setDropoff(simpleName);
+    setActiveField(null);
+    setSuggestions([]);
+  };
+
+  const handleSelectHistory = (item: SearchHistoryItem) => {
+    if (activeField === 'pickup') setPickup(item.destination_name);
+    else setDropoff(item.destination_name);
+    setActiveField(null);
+  };
+
+  const handleSwapLocations = () => {
+    const temp = pickup;
+    setPickup(dropoff);
+    setDropoff(temp);
+  };
+
+  const handleCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
+    }
+
+    setLoadingLocation(true);
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      const { latitude, longitude } = position.coords;
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+        const data = await res.json();
+        const address = data.display_name.split(',')[0] + ', ' + (data.address.city || data.address.state || '');
+        setPickup(address);
+      } catch (error) {
+        alert("Unable to fetch address details.");
+      } finally {
+        setLoadingLocation(false);
+      }
+    }, () => {
+      setLoadingLocation(false);
+      alert("Unable to retrieve your location.");
+    });
+  };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
     const params = new URLSearchParams();
-    if (search.origin) params.append('origin', search.origin);
-    if (search.destination) params.append('destination', search.destination);
+    if (pickup) params.append('origin', pickup);
+    if (dropoff) params.append('destination', dropoff);
+    if (activeTab === 'schedule' && date && time) {
+      params.append('date', date);
+      params.append('time', time);
+    }
     router.push(`/search?${params.toString()}`);
   };
 
   return (
-    <div className="min-h-screen bg-velox-midnight text-velox-white font-sans overflow-x-hidden">
+    <div className="min-h-screen bg-white text-slate-900 font-sans selection:bg-black selection:text-white">
       
-      {/* --- Navigation Bar --- */}
-      <nav className="fixed w-full z-50 glass-nav border-b border-white/5 transition-all">
-        <div className="max-w-7xl mx-auto px-6 h-24 flex items-center justify-between">
-          <div className="flex items-center gap-10">
-            <Link href="/" className="text-2xl font-black tracking-tighter flex items-center gap-2 text-velox-gold">
-              <div className="w-10 h-10 bg-gradient-to-br from-velox-gold to-yellow-600 text-velox-midnight rounded-xl flex items-center justify-center shadow-lg shadow-velox-gold/20">V</div>
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">VeloxRide</span>
+      {/* --- Navigation --- */}
+      <nav className="fixed w-full z-50 bg-white/95 backdrop-blur-md border-b border-slate-100 transition-all h-20">
+        <div className="w-[90%] md:w-[85%] mx-auto h-full flex items-center justify-between">
+          <div className="flex items-center gap-12">
+            <Link href="/" className="flex items-center gap-2 group">
+              <div className="w-10 h-10 bg-black text-white rounded-xl flex items-center justify-center font-bold text-xl tracking-tight shadow-lg shadow-black/20 transition-transform group-hover:scale-105">V</div>
+              <span className="text-2xl font-bold tracking-tight text-slate-900">VeloxRide</span>
             </Link>
             
-            {/* Desktop Links */}
-            <div className="hidden md:flex items-center gap-8 text-sm font-semibold text-gray-400">
-              <Link href="#ride" className="hover:text-velox-gold transition duration-300">Ride</Link>
-              <Link href="#drive" className="hover:text-velox-gold transition duration-300">Drive</Link>
-              <Link href="#business" className="hover:text-velox-gold transition duration-300">Business</Link>
-              <Link href="#safety" className="hover:text-velox-gold transition duration-300">Safety</Link>
+            <div className="hidden md:flex items-center gap-8 text-sm font-semibold text-slate-600">
+              {['Ride', 'Drive', 'Business', 'Safety'].map((item) => (
+                <Link key={item} href={`#${item.toLowerCase()}`} className="hover:text-black transition-colors">{item}</Link>
+              ))}
             </div>
           </div>
 
-          <div className="hidden md:flex items-center gap-6">
-             <Link href="/auth?role=passenger" className="text-sm font-bold text-gray-300 hover:text-white transition">Log in</Link>
-             <Link href="/auth?role=passenger" className="bg-velox-gold text-velox-midnight px-6 py-3 rounded-full text-sm font-bold hover:bg-velox-goldLight transition shadow-lg shadow-velox-gold/10">
+          <div className="hidden md:flex items-center gap-4">
+             <Link href="/auth?role=passenger" className="text-sm font-bold text-slate-900 hover:text-slate-600 transition">Log in</Link>
+             <Link href="/auth?role=passenger" className="bg-black text-white px-6 py-3 rounded-full text-sm font-bold hover:bg-slate-800 transition shadow-medium shadow-black/10 transform hover:-translate-y-0.5">
                Sign up
              </Link>
           </div>
 
-          {/* Mobile Menu Button */}
-          <button className="md:hidden p-2 text-white" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-            {mobileMenuOpen ? <X /> : <Menu />}
+          <button className="md:hidden text-slate-900" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+            {mobileMenuOpen ? <X className="w-7 h-7" /> : <Menu className="w-7 h-7" />}
           </button>
         </div>
 
         {/* Mobile Menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden absolute top-24 left-0 w-full bg-velox-midnight border-b border-white/10 p-6 shadow-xl flex flex-col gap-6 animate-slide-up">
-             <Link href="#ride" className="text-lg font-semibold text-gray-200" onClick={() => setMobileMenuOpen(false)}>Ride</Link>
-             <Link href="#drive" className="text-lg font-semibold text-gray-200" onClick={() => setMobileMenuOpen(false)}>Drive</Link>
-             <Link href="#business" className="text-lg font-semibold text-gray-200" onClick={() => setMobileMenuOpen(false)}>Business</Link>
-             <div className="h-px bg-white/10 w-full my-2"></div>
-             <Link href="/auth?role=passenger" className="text-lg font-semibold text-velox-gold" onClick={() => setMobileMenuOpen(false)}>Log in</Link>
-             <Link href="/auth?role=passenger" className="bg-velox-gold text-velox-midnight py-3 rounded-xl text-center font-bold" onClick={() => setMobileMenuOpen(false)}>Sign Up Free</Link>
+          <div className="md:hidden absolute top-20 left-0 w-full bg-white border-b border-slate-100 p-6 shadow-float flex flex-col gap-4 animate-slide-up">
+             {['Ride', 'Drive', 'Business'].map((item) => (
+               <Link key={item} href={`#${item.toLowerCase()}`} className="text-lg font-medium text-slate-900" onClick={() => setMobileMenuOpen(false)}>{item}</Link>
+             ))}
+             <div className="h-px bg-slate-100 w-full my-2"></div>
+             <Link href="/auth?role=passenger" className="w-full bg-slate-100 text-slate-900 py-3.5 rounded-lg text-center font-bold" onClick={() => setMobileMenuOpen(false)}>Log In</Link>
+             <Link href="/auth?role=passenger" className="w-full bg-black text-white py-3.5 rounded-lg text-center font-bold" onClick={() => setMobileMenuOpen(false)}>Sign Up</Link>
           </div>
         )}
       </nav>
 
       {/* --- Hero Section --- */}
-      <section className="relative pt-40 pb-20 lg:pt-60 lg:pb-40 px-6 overflow-hidden">
-        {/* Background Effects */}
-        <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-velox-gold/10 rounded-full blur-[120px] -z-10 translate-x-1/2 -translate-y-1/2"></div>
-        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-blue-900/10 rounded-full blur-[100px] -z-10 -translate-x-1/2 translate-y-1/3"></div>
-
-        <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
+      {/* FIX: Removed fixed height constraint (90vh) and used min-height with padding-top (pt-28) to clear navbar */}
+      <section className="pt-32 pb-16 w-[90%] md:w-[85%] mx-auto bg-white min-h-[90vh] flex items-center relative">
+        <div className="grid lg:grid-cols-2 gap-16 items-center w-full h-full">
           
-          <div className="animate-slide-up z-10">
-            <h1 className="text-5xl lg:text-7xl font-extrabold tracking-tight text-white leading-[1.1] mb-8">
-              Move with <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-velox-gold to-yellow-200">Prestige.</span>
+          <div className="relative z-20 animate-fade-in flex flex-col justify-center">
+            <h1 className="text-5xl lg:text-7xl font-bold tracking-tight text-slate-900 leading-[1.1] mb-6">
+              Your city.<br />
+              Your schedule.
             </h1>
             
-            <p className="text-lg text-gray-400 mb-10 max-w-lg leading-relaxed">
-              Experience the new standard of Nigerian mobility. Schedule your commute, split the cost, and travel in verified comfort.
+            <p className="text-xl text-slate-500 mb-10 max-w-lg leading-relaxed font-medium">
+              Experience seamless mobility. Book a seat, share the cost, and travel in premium comfort.
             </p>
 
-            {/* The Tabbed Widget */}
-            <div className="bg-white/5 backdrop-blur-md p-2 rounded-3xl border border-white/10 shadow-2xl max-w-md">
-               <div className="flex bg-black/20 p-1 rounded-2xl mb-4">
+            {/* Smart Booking Widget */}
+            <div className="bg-white p-1 rounded-[2rem] shadow-float border border-slate-100 max-w-lg relative z-20" ref={wrapperRef}>
+               
+               {/* Tab Switcher - More Integrated Look */}
+               <div className="grid grid-cols-2 p-1.5 bg-slate-50/80 rounded-[1.8rem] mb-2">
                   <button 
-                    onClick={() => setActiveTab('ride')}
-                    className={`flex-1 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'ride' ? 'bg-velox-gold text-velox-midnight shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                    onClick={() => setActiveTab('schedule')}
+                    className={`py-3 rounded-3xl text-sm font-bold transition-all duration-300 ${activeTab === 'schedule' ? 'bg-white text-black shadow-sm ring-1 ring-slate-100' : 'text-slate-500 hover:text-slate-800'}`}
                   >
-                    <Car className="w-4 h-4" /> Ride
+                    Schedule
                   </button>
                   <button 
-                    onClick={() => setActiveTab('drive')}
-                    className={`flex-1 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'drive' ? 'bg-velox-gold text-velox-midnight shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                    onClick={() => setActiveTab('now')}
+                    className={`py-3 rounded-3xl text-sm font-bold transition-all duration-300 ${activeTab === 'now' ? 'bg-white text-black shadow-sm ring-1 ring-slate-100' : 'text-slate-500 hover:text-slate-800'}`}
                   >
-                    <Wallet className="w-4 h-4" /> Drive
+                    Ride Now
                   </button>
                </div>
+               
+               <form onSubmit={handleSearch} className="p-5 space-y-3 relative">
+                 
+                 {/* Input Group */}
+                 <div className="bg-slate-50 rounded-2xl p-2 relative border border-slate-100 focus-within:border-black/10 focus-within:ring-4 focus-within:ring-black/5 transition-all duration-300">
+                    
+                    {/* Visual Connector Line */}
+                    <div className="absolute left-[27px] top-12 bottom-12 w-0.5 bg-slate-200 z-0"></div>
 
-               <div className="p-4">
-                 {activeTab === 'ride' ? (
-                   <div className="space-y-4">
-                     <div className="space-y-3">
-                        <div className="relative group">
-                          <div className="absolute left-4 top-3.5 w-2 h-2 bg-velox-gold rounded-full shadow-[0_0_10px_rgba(226,185,59,0.5)]"></div>
-                          <div className="absolute left-5 top-5 w-0.5 h-8 bg-white/10"></div>
-                          <input 
-                            type="text" 
-                            placeholder="Pickup Location" 
-                            className="w-full bg-velox-navy/50 border border-white/5 hover:border-velox-gold/30 text-white p-4 pl-10 rounded-xl font-medium focus:ring-1 focus:ring-velox-gold outline-none transition" 
-                            value={search.origin}
-                            onChange={(e) => setSearch({ ...search, origin: e.target.value })}
-                          />
-                        </div>
-                        <div className="relative group">
-                          <div className="absolute left-4 top-3.5 w-2 h-2 bg-white rounded-sm"></div>
-                          <input 
-                            type="text" 
-                            placeholder="Destination" 
-                            className="w-full bg-velox-navy/50 border border-white/5 hover:border-velox-gold/30 text-white p-4 pl-10 rounded-xl font-medium focus:ring-1 focus:ring-velox-gold outline-none transition" 
-                            value={search.destination}
-                            onChange={(e) => setSearch({ ...search, destination: e.target.value })}
-                          />
-                        </div>
-                     </div>
-                     <button 
-                        onClick={handleSearch}
-                        className="block w-full bg-white text-velox-midnight text-center py-4 rounded-xl font-bold hover:bg-gray-100 transition flex items-center justify-center gap-2"
-                     >
-                       Find Trajectory <ArrowRight className="w-5 h-5" />
-                     </button>
-                   </div>
-                 ) : (
-                   <div className="text-center py-6 space-y-5">
-                     <div>
-                       <div className="text-4xl font-black text-velox-gold">₦300k+</div>
-                       <div className="text-sm text-gray-400 font-medium tracking-wide uppercase">Monthly earning potential</div>
-                     </div>
-                     <Link href="/auth?role=driver" className="block w-full bg-velox-gold text-velox-midnight text-center py-4 rounded-xl font-bold hover:bg-velox-goldLight transition shadow-lg shadow-velox-gold/20">
-                       Start Earning Today
-                     </Link>
-                     <p className="text-xs text-gray-500">Monetize your daily commute. Zero detour required.</p>
+                    {/* Swap Button */}
+                    <button 
+                      type="button"
+                      onClick={handleSwapLocations}
+                      className="absolute right-12 top-1/2 -translate-y-1/2 p-2 bg-white rounded-full shadow-sm border border-slate-100 text-slate-400 hover:text-black z-10 hover:scale-110 transition hidden md:flex"
+                      title="Swap locations"
+                    >
+                      <ArrowUpDown className="w-4 h-4" />
+                    </button>
+
+                    {/* Pickup Field */}
+                    <div className="relative z-10 group">
+                       <div className="absolute left-4 top-1/2 -translate-y-1/2 w-3 h-3 bg-black rounded-full ring-4 ring-white shadow-sm"></div>
+                       <input 
+                         type="text" 
+                         placeholder="Pickup location"
+                         className="w-full bg-transparent p-4 pl-12 pr-10 text-slate-900 font-semibold placeholder:text-slate-400 placeholder:font-medium outline-none text-base"
+                         value={pickup}
+                         onChange={(e) => handleInputChange('pickup', e.target.value)}
+                         onFocus={() => setActiveField('pickup')}
+                       />
+                       <button 
+                          type="button" 
+                          onClick={handleCurrentLocation}
+                          disabled={loadingLocation}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-xl hover:bg-slate-200/50 text-slate-400 hover:text-black transition"
+                          title="Use current location"
+                       >
+                          {loadingLocation ? <Loader2 className="w-5 h-5 animate-spin"/> : <Navigation className="w-5 h-5" />}
+                       </button>
+                    </div>
+
+                    <div className="h-px bg-slate-200 mx-4 my-1"></div>
+
+                    {/* Dropoff Field */}
+                    <div className="relative z-10 group">
+                       <div className="absolute left-4 top-1/2 -translate-y-1/2 w-3 h-3 bg-slate-800 rounded-sm ring-4 ring-white shadow-sm"></div>
+                       <input 
+                         type="text" 
+                         placeholder="Dropoff destination"
+                         className="w-full bg-transparent p-4 pl-12 pr-4 text-slate-900 font-semibold placeholder:text-slate-400 placeholder:font-medium outline-none text-base"
+                         value={dropoff}
+                         onChange={(e) => handleInputChange('dropoff', e.target.value)}
+                         onFocus={() => setActiveField('dropoff')}
+                       />
+                    </div>
+                 </div>
+
+                 {/* Scheduling Fields (Animated) */}
+                 {activeTab === 'schedule' && (
+                   <div className="grid grid-cols-2 gap-3 animate-fade-in mt-2">
+                      <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-center gap-3 hover:border-slate-300 transition cursor-pointer">
+                        <CalendarDays className="w-5 h-5 text-slate-500" />
+                        <input 
+                          type="date" 
+                          className="bg-transparent text-sm font-bold text-slate-900 outline-none w-full cursor-pointer"
+                          value={date}
+                          onChange={(e) => setDate(e.target.value)}
+                        />
+                      </div>
+                      <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-center gap-3 hover:border-slate-300 transition cursor-pointer">
+                        <Clock className="w-5 h-5 text-slate-500" />
+                        <input 
+                          type="time" 
+                          className="bg-transparent text-sm font-bold text-slate-900 outline-none w-full cursor-pointer"
+                          value={time}
+                          onChange={(e) => setTime(e.target.value)}
+                        />
+                      </div>
                    </div>
                  )}
-               </div>
+
+                 {/* Dropdown Suggestions */}
+                 {activeField && (suggestions.length > 0 || (history.length > 0 && !isTyping)) && (
+                    <div className="absolute top-[calc(100%-80px)] left-0 w-full bg-white rounded-2xl shadow-xl border border-slate-100/50 overflow-hidden z-50 max-h-72 overflow-y-auto animate-fade-in mt-2">
+                       {/* Loading */}
+                       {isTyping && (
+                         <div className="p-6 text-center text-slate-400 text-sm flex items-center justify-center gap-2">
+                           <Loader2 className="w-4 h-4 animate-spin" /> Searching places...
+                         </div>
+                       )}
+
+                       {/* History */}
+                       {!isTyping && history.length > 0 && (
+                         <div className="py-2 bg-slate-50/50">
+                            <div className="px-5 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                              <History className="w-3 h-3" /> Recent
+                            </div>
+                            {history.map(item => (
+                              <div 
+                                key={item.id} 
+                                onClick={() => handleSelectHistory(item)}
+                                className="px-5 py-3.5 hover:bg-slate-100 cursor-pointer flex items-center gap-4 transition group"
+                              >
+                                <div className="w-9 h-9 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400 group-hover:text-black group-hover:border-black transition">
+                                  <Clock className="w-4 h-4" />
+                                </div>
+                                <span className="font-bold text-slate-800 text-sm">{item.destination_name}</span>
+                              </div>
+                            ))}
+                         </div>
+                       )}
+
+                       {/* Suggestions */}
+                       {suggestions.length > 0 && (
+                         <div className="py-2">
+                            <div className="px-5 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Suggestions</div>
+                            {suggestions.map(item => (
+                              <div 
+                                key={item.place_id} 
+                                onClick={() => handleSelectSuggestion(item)}
+                                className="px-5 py-3.5 hover:bg-slate-50 cursor-pointer flex items-center gap-4 border-b border-slate-50 last:border-0 transition group"
+                              >
+                                <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-slate-200 transition">
+                                  <MapPin className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <div className="font-bold text-slate-900 text-sm">{item.display_name.split(',')[0]}</div>
+                                  <div className="text-xs text-slate-500 truncate max-w-[280px]">{item.display_name}</div>
+                                </div>
+                              </div>
+                            ))}
+                         </div>
+                       )}
+                    </div>
+                 )}
+
+                 <button type="submit" className="w-full bg-black text-white py-4 rounded-xl font-bold text-lg hover:bg-slate-900 transition flex items-center justify-center gap-2 shadow-xl shadow-black/10 transform active:scale-[0.98] mt-4">
+                   See prices <ArrowRight className="w-5 h-5" />
+                 </button>
+               </form>
             </div>
           </div>
 
-          {/* Hero Image / Visual */}
-          <div className="relative hidden lg:block h-[600px] w-full rounded-[40px] overflow-hidden shadow-2xl border border-white/10 group">
+          {/* Hero Visual */}
+          <div className="relative hidden lg:block h-full max-h-[650px] w-full bg-slate-100 rounded-[3rem] overflow-hidden shadow-float group">
             <img 
-              src="https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?q=80&w=2940&auto=format&fit=crop" 
-              alt="Night Drive" 
-              className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition duration-1000"
+              src="https://images.unsplash.com/photo-1554223090-7e482851df45?q=80&w=2940&auto=format&fit=crop" 
+              alt="Urban Mobility" 
+              className="w-full h-full object-cover scale-105 group-hover:scale-100 transition duration-1000 ease-in-out"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-velox-midnight via-velox-midnight/50 to-transparent"></div>
-            
-            <div className="absolute bottom-10 left-10 right-10">
-               <div className="flex items-center gap-3 mb-4">
-                 <div className="bg-velox-gold/20 backdrop-blur-md p-2 rounded-lg">
-                    <ShieldCheck className="text-velox-gold w-6 h-6" />
+            {/* Floating Trust Card */}
+            <div className="absolute bottom-10 left-10 bg-white/80 backdrop-blur-xl p-5 pr-8 rounded-2xl shadow-float max-w-xs border border-white/40">
+               <div className="flex items-center gap-4">
+                 <div className="w-12 h-12 rounded-full bg-black text-white flex items-center justify-center shadow-lg">
+                   <ShieldCheck className="w-6 h-6" />
                  </div>
-                 <span className="font-bold text-sm uppercase tracking-widest text-velox-gold">Verified Safe</span>
+                 <div>
+                   <p className="font-bold text-slate-900 text-lg">Safety First</p>
+                   <p className="text-xs text-slate-600 font-medium">All trips are GPS tracked & insured.</p>
+                 </div>
                </div>
-               <p className="font-bold text-3xl text-white leading-tight">Where luxury meets<br/>affordability.</p>
             </div>
           </div>
 
         </div>
       </section>
 
-      {/* --- Value Props --- */}
-      <section className="py-24 px-6 border-y border-white/5 bg-velox-navy/30">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="bg-white/5 p-8 rounded-3xl border border-white/5 hover:border-velox-gold/30 transition duration-300 group">
-               <div className="w-14 h-14 bg-velox-midnight rounded-2xl border border-white/10 flex items-center justify-center text-velox-gold mb-6 group-hover:scale-110 transition">
-                 <Calendar className="w-7 h-7" />
-               </div>
-               <h3 className="text-xl font-bold mb-3 text-white">Precision Scheduling</h3>
-               <p className="text-gray-400 leading-relaxed">
-                 Lock in your seat up to 7 days in advance. Predictable transport for your daily routine.
-               </p>
-            </div>
-            <div className="bg-gradient-to-br from-velox-gold to-yellow-700 text-velox-midnight p-8 rounded-3xl shadow-lg transform md:-translate-y-6 border border-yellow-500/20">
-               <div className="w-14 h-14 bg-velox-midnight/10 rounded-2xl flex items-center justify-center text-velox-midnight mb-6">
-                 <Wallet className="w-7 h-7" />
-               </div>
-               <h3 className="text-xl font-bold mb-3">Cost Sharing</h3>
-               <p className="text-velox-midnight/80 font-medium leading-relaxed">
-                 Save up to 60% by sharing your ride. Enjoy private car comfort at public transport prices.
-               </p>
-            </div>
-            <div className="bg-white/5 p-8 rounded-3xl border border-white/5 hover:border-velox-gold/30 transition duration-300 group">
-               <div className="w-14 h-14 bg-velox-midnight rounded-2xl border border-white/10 flex items-center justify-center text-velox-gold mb-6 group-hover:scale-110 transition">
-                 <Star className="w-7 h-7" />
-               </div>
-               <h3 className="text-xl font-bold mb-3 text-white">Verified Community</h3>
-               <p className="text-gray-400 leading-relaxed">
-                 Strict verification for all drivers. Rate your experience and travel with professionals.
-               </p>
-            </div>
-          </div>
+      {/* --- How It Works --- */}
+      <section className="py-24 bg-slate-50">
+        <div className="w-[90%] md:w-[85%] mx-auto">
+           <div className="text-center mb-16">
+             <h2 className="text-3xl font-bold text-slate-900 mb-4">How VeloxRide Works</h2>
+             <p className="text-slate-500 max-w-2xl mx-auto">Getting where you need to go shouldn&apos;t be complicated. We&apos;ve streamlined the process.</p>
+           </div>
+
+           <div className="grid md:grid-cols-3 gap-12">
+              {[
+                {
+                  step: "01",
+                  title: "Book in advance",
+                  desc: "Schedule your ride up to 7 days in advance to lock in your price and guarantee your seat.",
+                  icon: <Clock className="w-6 h-6 text-white"/>
+                },
+                {
+                  step: "02",
+                  title: "Get matched",
+                  desc: "We pair you with verified drivers heading your way. Share the ride, split the cost.",
+                  icon: <UserCheck className="w-6 h-6 text-white"/>
+                },
+                {
+                  step: "03",
+                  title: "Travel safely",
+                  desc: "Track your ride in real-time. Share your trip status with loved ones for peace of mind.",
+                  icon: <ShieldCheck className="w-6 h-6 text-white"/>
+                }
+              ].map((item, i) => (
+                <div key={i} className="relative group">
+                   <div className="text-6xl font-bold text-slate-200 absolute -top-8 -left-4 z-0 group-hover:text-slate-300 transition">{item.step}</div>
+                   <div className="relative z-10">
+                      <div className="w-14 h-14 bg-black rounded-2xl flex items-center justify-center mb-6 shadow-soft group-hover:scale-110 transition duration-300">
+                        {item.icon}
+                      </div>
+                      <h3 className="text-xl font-bold text-slate-900 mb-3">{item.title}</h3>
+                      <p className="text-slate-500 leading-relaxed">{item.desc}</p>
+                   </div>
+                </div>
+              ))}
+           </div>
         </div>
       </section>
 
-      {/* --- Driver Section --- */}
-      <section className="py-32 px-6 overflow-hidden relative" id="drive">
-         <div className="absolute top-1/2 left-0 w-full h-[500px] bg-gradient-to-r from-velox-gold/5 to-transparent -skew-y-3"></div>
-         
-         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center gap-16 relative z-10">
-            <div className="md:w-1/2">
-               <div className="inline-block px-4 py-1.5 rounded-full border border-velox-gold/50 text-velox-gold font-bold text-xs uppercase tracking-wider mb-6">
-                 For Drivers
+      {/* --- Why Choose Us --- */}
+      <section className="py-24 bg-white">
+        <div className="w-[90%] md:w-[85%] mx-auto grid lg:grid-cols-2 gap-20 items-center">
+           <div className="order-2 lg:order-1 relative">
+              <div className="grid grid-cols-2 gap-4">
+                 <div className="space-y-4 mt-8">
+                    <div className="h-64 rounded-2xl overflow-hidden shadow-medium bg-slate-100">
+                       <img src="https://images.unsplash.com/photo-1515542706656-8e6ef17a1521?auto=format&fit=crop&q=80&w=1000" className="w-full h-full object-cover hover:scale-105 transition duration-500" alt="Passenger"/>
+                    </div>
+                    <div className="h-48 rounded-2xl overflow-hidden shadow-medium bg-slate-100">
+                       <img src="https://images.unsplash.com/photo-1621929747188-0b4b8a97129f?auto=format&fit=crop&q=80&w=1000" className="w-full h-full object-cover hover:scale-105 transition duration-500" alt="Map"/>
+                    </div>
+                 </div>
+                 <div className="space-y-4">
+                    <div className="h-48 rounded-2xl overflow-hidden shadow-medium bg-slate-100">
+                       <img src="https://images.unsplash.com/photo-1469334031218-e382a71b716b?auto=format&fit=crop&q=80&w=1000" className="w-full h-full object-cover hover:scale-105 transition duration-500" alt="Woman smiling"/>
+                    </div>
+                    <div className="h-64 rounded-2xl overflow-hidden shadow-medium bg-slate-100">
+                       <img src="https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&q=80&w=1000" className="w-full h-full object-cover hover:scale-105 transition duration-500" alt="Car"/>
+                    </div>
+                 </div>
+              </div>
+           </div>
+           
+           <div className="order-1 lg:order-2">
+              <h2 className="text-4xl font-bold text-slate-900 mb-6">Reimagining how the city moves.</h2>
+              <p className="text-lg text-slate-500 mb-8 leading-relaxed">
+                We are not just another ride-hailing app. VeloxRide is built on the philosophy of shared efficiency. By filling empty seats in cars already on the road, we reduce traffic, lower costs, and create a community of verified professionals.
+              </p>
+              
+              <ul className="space-y-4 mb-10">
+                {[
+                  "No surge pricing on scheduled rides",
+                  "Verified professional drivers",
+                  "Dedicated 24/7 support line",
+                  "Seamless corporate billing"
+                ].map((point, i) => (
+                  <li key={i} className="flex items-center gap-3">
+                    <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center text-green-600">
+                      <Zap className="w-3.5 h-3.5 fill-current" />
+                    </div>
+                    <span className="font-medium text-slate-700">{point}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <Link href="/about" className="text-black font-bold border-b-2 border-black pb-1 hover:text-slate-600 hover:border-slate-600 transition">
+                Read our full story
+              </Link>
+           </div>
+        </div>
+      </section>
+
+      {/* --- Driver CTA --- */}
+      <section className="py-32 bg-slate-50" id="drive">
+         <div className="w-[90%] md:w-[85%] mx-auto flex flex-col lg:flex-row items-center gap-20">
+            <div className="lg:w-1/2 order-2 lg:order-1">
+               <div className="relative h-[500px] w-full rounded-[2.5rem] overflow-hidden shadow-float">
+                  <img src="https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?auto=format&fit=crop&q=80&w=2940" className="object-cover w-full h-full hover:scale-105 transition duration-700" alt="Driver" />
+                  <div className="absolute inset-0 bg-black/10"></div>
                </div>
-               <h2 className="text-4xl lg:text-5xl font-extrabold mb-6 text-white">
-                 Monetize your <br /> <span className="text-velox-gold">empty seats.</span>
+            </div>
+            
+            <div className="lg:w-1/2 order-1 lg:order-2">
+               <h2 className="text-5xl font-bold mb-8 text-slate-900 tracking-tight">
+                 Set your own pace.<br/> Earn on your terms.
                </h2>
-               <p className="text-gray-400 text-lg mb-8">
-                 You are driving anyway. Turn your empty seats into a revenue stream. Cover your fuel, maintenance, and gain extra income effortlessly.
+               <p className="text-slate-500 text-xl mb-10 leading-relaxed">
+                 Maximize your vehicle&apos;s potential. Whether you drive full-time or just want to cover your commute costs, we provide the platform for flexible earnings and instant payouts.
                </p>
                
-               <ul className="space-y-5 mb-10">
-                 <li className="flex items-center gap-4">
-                   <div className="w-6 h-6 rounded-full bg-velox-gold/20 flex items-center justify-center">
-                     <div className="w-2 h-2 bg-velox-gold rounded-full"></div>
-                   </div>
-                   <span className="font-medium text-gray-200">Keep 85% of earnings</span>
-                 </li>
-                 <li className="flex items-center gap-4">
-                   <div className="w-6 h-6 rounded-full bg-velox-gold/20 flex items-center justify-center">
-                     <div className="w-2 h-2 bg-velox-gold rounded-full"></div>
-                   </div>
-                   <span className="font-medium text-gray-200">Filter passengers by profession rating</span>
-                 </li>
-                 <li className="flex items-center gap-4">
-                   <div className="w-6 h-6 rounded-full bg-velox-gold/20 flex items-center justify-center">
-                     <div className="w-2 h-2 bg-velox-gold rounded-full"></div>
-                   </div>
-                   <span className="font-medium text-gray-200">Recurring route publishing</span>
-                 </li>
-               </ul>
-
-               <Link href="/auth?role=driver" className="inline-flex items-center bg-white hover:bg-gray-200 text-velox-midnight px-8 py-4 rounded-xl font-bold transition">
-                 Register Vehicle <ArrowRight className="ml-2 w-5 h-5" />
-               </Link>
+               <div className="flex flex-col sm:flex-row gap-4">
+                 <Link href="/auth?role=driver" className="inline-flex items-center justify-center bg-black text-white px-8 py-4 rounded-xl font-bold text-lg transition hover:bg-slate-800 shadow-medium shadow-black/20">
+                   Become a driver
+                 </Link>
+               </div>
             </div>
-            
-            <div className="md:w-1/2 relative">
-               {/* Visual representation of earnings */}
-               <div className="bg-velox-navy border border-white/10 p-8 rounded-[32px] shadow-2xl max-w-sm mx-auto transform rotate-3 hover:rotate-0 transition duration-500 relative">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-velox-gold/10 rounded-full blur-2xl"></div>
-                  
-                  <div className="flex justify-between items-end mb-8 relative">
-                    <div>
-                      <div className="text-gray-400 text-sm mb-1 uppercase tracking-wider font-bold">Weekly Balance</div>
-                      <div className="text-4xl font-black text-white">₦142,500</div>
-                    </div>
-                    <div className="bg-green-500/20 text-green-400 px-3 py-1 rounded-lg text-xs font-bold">+18%</div>
-                  </div>
-                  <div className="space-y-4">
-                    {[1, 2, 3].map((_, i) => (
-                      <div key={i} className="flex items-center gap-4 p-4 bg-white/5 rounded-2xl border border-white/5">
-                         <div className="w-10 h-10 rounded-full bg-velox-gold/20 text-velox-gold flex items-center justify-center">
-                           <Car className="w-5 h-5" />
-                         </div>
-                         <div className="flex-1">
-                           <div className="text-sm font-bold text-white">Lekki Phase 1 → VI</div>
-                           <div className="text-xs text-gray-500">Completed • 08:30 AM</div>
-                         </div>
-                         <div className="font-bold text-velox-gold">+₦4,500</div>
-                      </div>
-                    ))}
+         </div>
+      </section>
+
+      {/* --- App Download CTA --- */}
+      <section className="py-20 px-6 bg-black text-white rounded-[3rem] mx-4 lg:mx-20 mb-20 overflow-hidden relative shadow-float">
+         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white/5 rounded-full blur-[100px] pointer-events-none"></div>
+         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-12 relative z-10">
+            <div className="md:w-1/2 px-6">
+               <h2 className="text-4xl lg:text-5xl font-bold mb-6">Velox on the go.</h2>
+               <p className="text-slate-400 text-lg mb-8 max-w-md">
+                 Download the VeloxRide app for iOS and Android. Book rides, track drivers, and manage payments effortlessly.
+               </p>
+               <div className="flex flex-wrap gap-4">
+                  <button className="bg-white text-black px-6 py-3 rounded-xl font-bold flex items-center gap-3 hover:bg-slate-200 transition">
+                    <Smartphone className="w-6 h-6"/> App Store
+                  </button>
+                  <button className="bg-transparent border border-white/20 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-3 hover:bg-white/10 transition">
+                    <Smartphone className="w-6 h-6"/> Google Play
+                  </button>
+               </div>
+            </div>
+            <div className="md:w-1/2 flex justify-center">
+               {/* Phone Mockup */}
+               <div className="relative w-72 h-[550px] bg-slate-800 rounded-[3rem] border-[8px] border-slate-700 shadow-2xl overflow-hidden transform rotate-6 hover:rotate-0 transition duration-500">
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-slate-700 rounded-b-xl z-20"></div>
+                  <img src="https://images.unsplash.com/photo-1512428559087-560fa5db7df7?auto=format&fit=crop&q=80&w=800" className="w-full h-full object-cover opacity-80" alt="App Screen"/>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex flex-col justify-end p-8">
+                     <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center mb-4">
+                       <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center text-white font-bold">V</div>
+                     </div>
+                     <div className="text-white font-bold text-2xl mb-1">Your ride is here</div>
+                     <div className="text-slate-300 text-sm">Driver arriving in 2 mins</div>
                   </div>
                </div>
             </div>
          </div>
       </section>
 
-      {/* --- FAQ Section --- */}
-      <section className="py-24 bg-velox-midnight px-6">
-        <div className="max-w-3xl mx-auto">
-           <h2 className="text-3xl font-bold text-center mb-12 text-white">Common Questions</h2>
-           <div className="space-y-4">
-             {[
-               { q: "Is VeloxRide safe?", a: "Yes. We verify every driver's license and vehicle documents. All trips are GPS tracked, and you can share your live trip details with loved ones." },
-               { q: "How are prices calculated?", a: "Prices are based on distance and vehicle capacity. Because you share the ride, the total cost is split, saving you 50-70% compared to solo taxis." },
-               { q: "Can I book a whole car?", a: "Yes, you can book all available seats in a car if you prefer a private ride, though the cost will reflect the full capacity." },
-               { q: "How do I pay?", a: "You can pay via the app using your card or bank transfer. We hold the payment in escrow and release it to the driver once the trip is completed." }
-             ].map((item, i) => (
-               <div key={i} className="bg-velox-navy/50 rounded-xl border border-white/5 overflow-hidden">
-                 <button 
-                   onClick={() => toggleFaq(i)}
-                   className="w-full flex justify-between items-center p-6 text-left hover:bg-white/5 transition"
-                 >
-                   <span className="font-bold text-gray-200">{item.q}</span>
-                   <ChevronDown className={`w-5 h-5 text-velox-gold transition-transform ${activeFaq === i ? 'rotate-180' : ''}`} />
-                 </button>
-                 {activeFaq === i && (
-                   <div className="px-6 pb-6 text-gray-400 leading-relaxed border-t border-white/5 pt-4">
-                     {item.a}
-                   </div>
-                 )}
-               </div>
-             ))}
-           </div>
-        </div>
-      </section>
-
       {/* --- Footer --- */}
-      <footer className="bg-velox-midnight pt-20 pb-10 px-6 border-t border-white/10">
-        <div className="max-w-7xl mx-auto grid md:grid-cols-4 gap-12 mb-16">
+      <footer className="bg-white pt-20 pb-10 px-6 border-t border-slate-100">
+        <div className="w-[90%] md:w-[85%] mx-auto grid md:grid-cols-4 gap-12 mb-16">
           <div className="col-span-1">
              <div className="flex items-center gap-2 mb-6">
-                <div className="w-8 h-8 bg-velox-gold rounded-lg text-velox-midnight flex items-center justify-center font-bold text-xl">V</div>
-                <span className="font-bold text-2xl text-white">VeloxRide</span>
+                <div className="w-8 h-8 bg-black text-white rounded-lg flex items-center justify-center font-bold text-lg">V</div>
+                <span className="font-bold text-xl text-slate-900">VeloxRide</span>
              </div>
-             <p className="text-gray-500 text-sm leading-relaxed">
+             <p className="text-slate-500 text-sm leading-relaxed">
                Making urban transportation affordable, safe, and predictable for everyone in Nigeria.
              </p>
           </div>
           <div>
-            <h4 className="font-bold mb-6 text-white">Product</h4>
-            <ul className="space-y-3 text-sm text-gray-500">
-              <li><Link href="#" className="hover:text-velox-gold transition">Ride</Link></li>
-              <li><Link href="#" className="hover:text-velox-gold transition">Drive</Link></li>
-              <li><Link href="#" className="hover:text-velox-gold transition">Safety</Link></li>
-              <li><Link href="#" className="hover:text-velox-gold transition">Business</Link></li>
+            <h4 className="font-bold mb-6 text-slate-900">Product</h4>
+            <ul className="space-y-3 text-sm text-slate-500">
+              {['Ride', 'Drive', 'Safety', 'Business'].map(item => (
+                <li key={item}><Link href="#" className="hover:text-black transition">{item}</Link></li>
+              ))}
             </ul>
           </div>
           <div>
-            <h4 className="font-bold mb-6 text-white">Company</h4>
-            <ul className="space-y-3 text-sm text-gray-500">
-              <li><Link href="#" className="hover:text-velox-gold transition">About us</Link></li>
-              <li><Link href="#" className="hover:text-velox-gold transition">Careers</Link></li>
-              <li><Link href="#" className="hover:text-velox-gold transition">Press</Link></li>
+            <h4 className="font-bold mb-6 text-slate-900">Company</h4>
+            <ul className="space-y-3 text-sm text-slate-500">
+              {['About us', 'Careers', 'Press'].map(item => (
+                <li key={item}><Link href="#" className="hover:text-black transition">{item}</Link></li>
+              ))}
             </ul>
           </div>
           <div>
-            <h4 className="font-bold mb-6 text-white">Support</h4>
-            <ul className="space-y-3 text-sm text-gray-500">
-              <li><Link href="#" className="hover:text-velox-gold transition">Help Center</Link></li>
-              <li><Link href="#" className="hover:text-velox-gold transition">Trust & Safety</Link></li>
-              <li><Link href="#" className="hover:text-velox-gold transition">Terms of Service</Link></li>
+            <h4 className="font-bold mb-6 text-slate-900">Support</h4>
+            <ul className="space-y-3 text-sm text-slate-500">
+              {['Help Center', 'Trust & Safety', 'Terms of Service'].map(item => (
+                <li key={item}><Link href="#" className="hover:text-black transition">{item}</Link></li>
+              ))}
             </ul>
           </div>
         </div>
-        <div className="max-w-7xl mx-auto pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-xs text-gray-600">© 2025 VeloxRide Nigeria. All rights reserved.</p>
-          <div className="flex gap-4">
-            <Link href="#" className="text-gray-600 hover:text-velox-gold text-sm transition">Privacy</Link>
-            <Link href="#" className="text-gray-600 hover:text-velox-gold text-sm transition">Terms</Link>
+        <div className="w-[90%] md:w-[85%] mx-auto pt-8 border-t border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
+          <p className="text-xs text-slate-500">© 2025 VeloxRide Nigeria. All rights reserved.</p>
+          <div className="flex gap-6">
+            <Link href="#" className="text-slate-500 hover:text-black text-xs transition">Privacy</Link>
+            <Link href="#" className="text-slate-500 hover:text-black text-xs transition">Terms</Link>
           </div>
         </div>
       </footer>

@@ -13,18 +13,25 @@ const config: Config = {
       },
       colors: {
         velox: {
-          midnight: '#020617', // Main background (Deepest Blue)
-          navy: '#0F172A',     // Secondary background (Card bg)
-          gold: '#E2B93B',     // Primary Brand Color
-          goldLight: '#FCD34D', // Hover states
-          slate: '#94A3B8',    // Muted text
-          white: '#F8FAFC',    // Primary text
+          gold: '#F59E0B',      // Amber-500
+          goldHover: '#D97706', // Amber-600
+          black: '#020617',     // Slate-950
+          charcoal: '#1E293B',  // Slate-800
+          gray: '#64748B',      // Slate-500
+          light: '#F8FAFC',     // Slate-50
+          border: '#E2E8F0',    // Slate-200
         }
       },
+      boxShadow: {
+        // Ultra-soft shadows for white theme
+        'soft': '0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.02)',
+        'medium': '0 10px 15px -3px rgba(0, 0, 0, 0.03), 0 4px 6px -2px rgba(0, 0, 0, 0.01)',
+        'float': '0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.01)',
+        'nav': '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+      },
       animation: {
-        'fade-in': 'fadeIn 0.6s ease-out',
-        'slide-up': 'slideUp 0.6s ease-out',
-        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'fade-in': 'fadeIn 0.5s ease-out',
+        'slide-up': 'slideUp 0.5s ease-out',
       },
       keyframes: {
         fadeIn: {
@@ -32,7 +39,7 @@ const config: Config = {
           '100%': { opacity: '1' },
         },
         slideUp: {
-          '0%': { transform: 'translateY(20px)', opacity: '0' },
+          '0%': { transform: 'translateY(10px)', opacity: '0' },
           '100%': { transform: 'translateY(0)', opacity: '1' },
         },
       },

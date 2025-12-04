@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import { Ride } from '@/types';
 import { format } from 'date-fns';
-import { MapPin, Clock, Users, Plus, Wallet, Trash2, ShieldCheck, ArrowUpRight } from 'lucide-react';
+import { MapPin, Plus, LogOut, X, TrendingUp, Calendar, ChevronRight, Shield, Loader2, ArrowUpRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export default function DriverDashboard() {
@@ -12,6 +12,7 @@ export default function DriverDashboard() {
   const [rides, setRides] = useState<Ride[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [isOnline, setIsOnline] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -34,7 +35,7 @@ export default function DriverDashboard() {
         return;
     }
 
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('rides')
       .select('*')
       .eq('driver_id', user.id)
@@ -42,11 +43,6 @@ export default function DriverDashboard() {
     
     if (data) setRides(data);
     setLoading(false);
-  };
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push('/');
   };
 
   const handleCreateRide = async (e: React.FormEvent) => {
@@ -67,7 +63,7 @@ export default function DriverDashboard() {
     });
 
     if (error) {
-      alert('Error creating ride: ' + error.message);
+      alert(error.message);
     } else {
       setShowForm(false);
       fetchDriverRides();
@@ -76,190 +72,164 @@ export default function DriverDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-velox-midnight font-sans text-white">
-      {/* --- Premium Navigation --- */}
-      <nav className="glass-nav border-b border-white/5 sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-6 h-20 flex justify-between items-center">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+      
+      <nav className="bg-white border-b border-slate-200 sticky top-0 z-30">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex justify-between items-center">
           <div className="flex items-center gap-3">
-             <div className="w-10 h-10 bg-velox-gold text-velox-midnight rounded-xl flex items-center justify-center font-bold text-lg">V</div>
-             <h1 className="text-xl font-bold text-white tracking-wide">Driver <span className="text-velox-gold">Portal</span></h1>
+             <div className="w-8 h-8 bg-black text-white rounded-lg flex items-center justify-center font-bold text-lg">V</div>
+             <h1 className="font-bold text-slate-900">Driver Portal</h1>
           </div>
-          <button onClick={handleLogout} className="text-sm font-semibold text-gray-400 hover:text-white transition">
-            Sign Out
-          </button>
+          
+          <div className="flex items-center gap-6">
+             <div className="flex items-center gap-3 bg-slate-100 px-1 py-1 rounded-full">
+                <button 
+                  className={`text-xs font-bold px-3 py-1.5 rounded-full cursor-pointer transition ${!isOnline ? 'bg-white shadow text-black' : 'text-slate-500'}`} 
+                  onClick={() => setIsOnline(false)}
+                >
+                  Offline
+                </button>
+                <button 
+                  className={`text-xs font-bold px-3 py-1.5 rounded-full cursor-pointer transition ${isOnline ? 'bg-green-500 text-white shadow' : 'text-slate-500'}`} 
+                  onClick={() => setIsOnline(true)}
+                >
+                  Online
+                </button>
+             </div>
+             <button onClick={async () => { await supabase.auth.signOut(); router.push('/'); }} className="text-slate-400 hover:text-red-500 transition">
+               <LogOut className="w-5 h-5"/>
+             </button>
+          </div>
         </div>
       </nav>
 
-      <div className="max-w-6xl mx-auto py-12 px-6">
+      <div className="max-w-7xl mx-auto py-10 px-6">
         
-        {/* --- Header Section --- */}
-        <div className="flex flex-col md:flex-row justify-between items-end mb-12 gap-6">
-          <div>
-            <h2 className="text-3xl font-extrabold text-white mb-2">My Schedule</h2>
-            <p className="text-gray-400">Manage your upcoming trajectories and earnings.</p>
-          </div>
-          <button 
-            onClick={() => setShowForm(!showForm)}
-            className="flex items-center px-6 py-4 bg-velox-gold text-velox-midnight rounded-xl font-bold hover:bg-yellow-400 transition shadow-lg shadow-velox-gold/10"
-          >
-            <Plus className="w-5 h-5 mr-2" />
-            Publish New Ride
-          </button>
-        </div>
+        <div className="grid lg:grid-cols-3 gap-8">
+           
+           {/* Sidebar Stats */}
+           <div className="space-y-6">
+              {/* Earnings Card */}
+              <div className="bg-black text-white p-6 rounded-3xl shadow-xl relative overflow-hidden">
+                 <div className="relative z-10">
+                    <p className="text-slate-400 text-sm font-medium mb-1">Today&apos;s Earnings</p>
+                    <h2 className="text-4xl font-bold mb-4">₦42,500</h2>
+                    <div className="flex items-center gap-2 text-green-400 text-sm font-bold bg-white/10 w-fit px-3 py-1 rounded-full">
+                       <TrendingUp className="w-4 h-4" /> +12% vs last week
+                    </div>
+                 </div>
+                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -mr-10 -mt-10"></div>
+              </div>
 
-        {/* --- Create Ride Form (Animated) --- */}
-        {showForm && (
-          <div className="bg-velox-navy/50 backdrop-blur-sm p-8 rounded-3xl border border-white/10 mb-12 animate-fade-in ring-1 ring-velox-gold/20">
-            <div className="flex justify-between items-center mb-8">
-               <h3 className="text-lg font-bold flex items-center gap-2 text-velox-gold">
-                 <ShieldCheck className="w-5 h-5"/> New Trajectory
-               </h3>
-               <button onClick={() => setShowForm(false)} className="text-gray-500 hover:text-white transition">Cancel</button>
-            </div>
+              {/* Quick Actions */}
+              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                 <h3 className="font-bold text-slate-900 mb-4">Quick Actions</h3>
+                 <div className="space-y-2">
+                    <button onClick={() => setShowForm(true)} className="w-full flex items-center justify-between p-4 rounded-xl bg-slate-50 hover:bg-slate-100 transition group">
+                       <div className="flex items-center gap-3">
+                          <div className="bg-white p-2 rounded-lg shadow-sm"><Plus className="w-5 h-5 text-black"/></div>
+                          <span className="font-bold text-sm">Post a Trip</span>
+                       </div>
+                       <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-black"/>
+                    </button>
+                    <button className="w-full flex items-center justify-between p-4 rounded-xl bg-slate-50 hover:bg-slate-100 transition group">
+                       <div className="flex items-center gap-3">
+                          <div className="bg-white p-2 rounded-lg shadow-sm"><Shield className="w-5 h-5 text-black"/></div>
+                          <span className="font-bold text-sm">Documents</span>
+                       </div>
+                       <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-black"/>
+                    </button>
+                 </div>
+              </div>
+           </div>
 
-            <form onSubmit={handleCreateRide} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Pickup Location</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. Gwarinpa, Abuja"
-                  required
-                  className="w-full p-4 bg-velox-midnight border border-white/10 rounded-xl font-medium focus:ring-1 focus:ring-velox-gold outline-none text-white transition"
-                  value={formData.origin}
-                  onChange={e => setFormData({...formData, origin: e.target.value})}
-                />
+           {/* Main Content */}
+           <div className="lg:col-span-2">
+              <div className="flex justify-between items-center mb-6">
+                 <h2 className="text-xl font-bold text-slate-900">Upcoming Trajectories</h2>
+                 <button onClick={() => setShowForm(true)} className="text-sm font-bold text-black underline hover:text-slate-600">Create New</button>
               </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Destination</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. Maitama, Abuja"
-                  required
-                  className="w-full p-4 bg-velox-midnight border border-white/10 rounded-xl font-medium focus:ring-1 focus:ring-velox-gold outline-none text-white transition"
-                  value={formData.destination}
-                  onChange={e => setFormData({...formData, destination: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Date</label>
-                <input 
-                  type="date" 
-                  required
-                  className="w-full p-4 bg-velox-midnight border border-white/10 rounded-xl font-medium focus:ring-1 focus:ring-velox-gold outline-none text-white transition [color-scheme:dark]"
-                  value={formData.date}
-                  onChange={e => setFormData({...formData, date: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Departure Time</label>
-                <input 
-                  type="time" 
-                  required
-                  className="w-full p-4 bg-velox-midnight border border-white/10 rounded-xl font-medium focus:ring-1 focus:ring-velox-gold outline-none text-white transition [color-scheme:dark]"
-                  value={formData.time}
-                  onChange={e => setFormData({...formData, time: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Available Seats</label>
-                <input 
-                  type="number" 
-                  min="1" 
-                  max="6"
-                  required
-                  className="w-full p-4 bg-velox-midnight border border-white/10 rounded-xl font-medium focus:ring-1 focus:ring-velox-gold outline-none text-white transition"
-                  value={formData.seats}
-                  onChange={e => setFormData({...formData, seats: parseInt(e.target.value) || 0})}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Price per Seat (₦)</label>
-                <input 
-                  type="number" 
-                  min="0"
-                  required
-                  className="w-full p-4 bg-velox-midnight border border-white/10 rounded-xl font-medium focus:ring-1 focus:ring-velox-gold outline-none text-white transition"
-                  value={formData.price}
-                  onChange={e => setFormData({...formData, price: parseInt(e.target.value) || 0})}
-                />
-              </div>
-              <div className="md:col-span-2 pt-6">
-                <button 
-                  type="submit" 
-                  className="w-full py-4 bg-white text-velox-midnight rounded-xl font-bold hover:bg-gray-200 transition shadow-lg"
-                >
-                  Confirm Publication
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
 
-        {/* --- Rides List --- */}
-        <div className="space-y-6">
-          {loading ? (
-            <div className="text-center py-20">
-               <div className="animate-spin w-8 h-8 border-4 border-velox-gold border-t-transparent rounded-full mx-auto mb-4"></div>
-               <p className="text-gray-500 font-medium">Loading your schedule...</p>
-            </div>
-          ) : rides.length === 0 ? (
-            <div className="text-center py-32 bg-white/5 rounded-3xl border border-white/5 border-dashed">
-              <div className="w-16 h-16 bg-velox-midnight rounded-full flex items-center justify-center mx-auto mb-6 border border-white/10">
-                 <Clock className="w-8 h-8 text-gray-500" />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">No upcoming trips</h3>
-              <p className="text-gray-500 mb-8">You haven't posted any trajectories yet.</p>
-              <button onClick={() => setShowForm(true)} className="text-velox-gold font-bold hover:text-white transition flex items-center justify-center gap-2 mx-auto">
-                Post your first ride <ArrowUpRight className="w-4 h-4" />
-              </button>
-            </div>
-          ) : (
-            rides.map((ride) => (
-              <div key={ride.id} className="bg-velox-navy/40 p-8 rounded-3xl border border-white/5 hover:border-velox-gold/30 transition group relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-1 h-full bg-velox-gold"></div>
-                
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
-                   <div className="space-y-4">
-                      <div className="flex items-center gap-4">
-                         <span className="text-xs font-bold uppercase tracking-wider text-velox-gold">
-                           {format(new Date(ride.departure_time), 'MMM dd')}
-                         </span>
-                         <span className="text-2xl font-black text-white">
-                           {format(new Date(ride.departure_time), 'h:mm a')}
-                         </span>
-                      </div>
-                      
-                      <div className="flex items-center gap-4">
-                          <div className="flex flex-col items-center gap-1">
-                             <div className="w-2 h-2 rounded-full bg-velox-gold"></div>
-                             <div className="w-0.5 h-8 bg-white/10"></div>
-                             <div className="w-2 h-2 rounded-full bg-white"></div>
-                          </div>
-                          <div className="space-y-3">
-                             <div className="text-lg font-medium text-gray-200">{ride.origin}</div>
-                             <div className="text-lg font-medium text-gray-200">{ride.destination}</div>
-                          </div>
-                      </div>
-                   </div>
-
-                   <div className="mt-8 md:mt-0 flex items-center gap-10">
-                      <div className="text-right">
-                         <div className="flex items-center gap-2 text-gray-500 text-sm mb-2 justify-end">
-                            <Users className="w-4 h-4" /> {ride.total_seats} seats
+              {/* Ride Creation Modal */}
+              {showForm && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                   <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-lg relative animate-fade-in">
+                      <button onClick={() => setShowForm(false)} className="absolute top-6 right-6 text-slate-400 hover:text-black transition"><X/></button>
+                      <h3 className="text-2xl font-bold mb-6">New Trip</h3>
+                      <form onSubmit={handleCreateRide} className="space-y-4">
+                         <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                               <label className="text-xs font-bold text-slate-500 uppercase">Origin</label>
+                               <input className="w-full p-3 bg-slate-50 rounded-xl font-medium outline-none focus:ring-2 focus:ring-black" required placeholder="Gwarinpa" value={formData.origin} onChange={e => setFormData({...formData, origin: e.target.value})}/>
+                            </div>
+                            <div className="space-y-1">
+                               <label className="text-xs font-bold text-slate-500 uppercase">Destination</label>
+                               <input className="w-full p-3 bg-slate-50 rounded-xl font-medium outline-none focus:ring-2 focus:ring-black" required placeholder="Wuse 2" value={formData.destination} onChange={e => setFormData({...formData, destination: e.target.value})}/>
+                            </div>
                          </div>
-                         <div className="flex items-center gap-2 text-white font-bold text-2xl">
-                            <span className="text-velox-gold">₦</span>{ride.price_per_seat}
+                         <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                               <label className="text-xs font-bold text-slate-500 uppercase">Date</label>
+                               <input type="date" className="w-full p-3 bg-slate-50 rounded-xl font-medium outline-none focus:ring-2 focus:ring-black" required value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})}/>
+                            </div>
+                            <div className="space-y-1">
+                               <label className="text-xs font-bold text-slate-500 uppercase">Time</label>
+                               <input type="time" className="w-full p-3 bg-slate-50 rounded-xl font-medium outline-none focus:ring-2 focus:ring-black" required value={formData.time} onChange={e => setFormData({...formData, time: e.target.value})}/>
+                            </div>
                          </div>
-                      </div>
-                      
-                      <div className="inline-flex px-4 py-2 rounded-full text-xs font-bold bg-green-500/10 text-green-400 uppercase tracking-wider border border-green-500/20">
-                          {ride.status}
-                      </div>
+                         <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                               <label className="text-xs font-bold text-slate-500 uppercase">Seats</label>
+                               <input type="number" min="1" max="6" className="w-full p-3 bg-slate-50 rounded-xl font-medium outline-none focus:ring-2 focus:ring-black" required value={formData.seats} onChange={e => setFormData({...formData, seats: parseInt(e.target.value) || 0})}/>
+                            </div>
+                            <div className="space-y-1">
+                               <label className="text-xs font-bold text-slate-500 uppercase">Price (₦)</label>
+                               <input type="number" min="0" className="w-full p-3 bg-slate-50 rounded-xl font-medium outline-none focus:ring-2 focus:ring-black" required value={formData.price} onChange={e => setFormData({...formData, price: parseInt(e.target.value) || 0})}/>
+                            </div>
+                         </div>
+                         <button type="submit" className="w-full bg-black text-white py-4 rounded-xl font-bold hover:bg-slate-800 transition mt-4 shadow-lg">Publish Trip</button>
+                      </form>
                    </div>
                 </div>
+              )}
+
+              <div className="space-y-4">
+                {loading ? (
+                   <div className="text-center py-12"><Loader2 className="w-8 h-8 animate-spin mx-auto text-slate-300"/></div>
+                ) : rides.length === 0 ? (
+                   <div className="bg-white p-12 rounded-3xl border border-dashed border-slate-300 text-center">
+                      <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400"><Calendar className="w-8 h-8"/></div>
+                      <h3 className="font-bold text-lg mb-2 text-slate-900">No trips scheduled</h3>
+                      <button onClick={() => setShowForm(true)} className="text-black font-bold hover:underline">Create your first trip</button>
+                   </div>
+                ) : (
+                   rides.map(ride => (
+                      <div key={ride.id} className="bg-white p-6 rounded-2xl border border-slate-100 hover:shadow-md transition flex items-center justify-between group">
+                         <div className="flex gap-6 items-center">
+                            <div className="flex flex-col items-center">
+                               <span className="text-xs font-bold text-slate-400 uppercase">{format(new Date(ride.departure_time), 'MMM')}</span>
+                               <span className="text-2xl font-bold text-slate-900">{format(new Date(ride.departure_time), 'dd')}</span>
+                            </div>
+                            <div className="w-px h-10 bg-slate-100"></div>
+                            <div>
+                               <div className="text-xl font-bold text-slate-900 mb-1">{format(new Date(ride.departure_time), 'h:mm a')}</div>
+                               <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
+                                  <span>{ride.origin}</span>
+                                  <ArrowUpRight className="w-3 h-3 text-slate-400"/>
+                                  <span>{ride.destination}</span>
+                               </div>
+                            </div>
+                         </div>
+                         <div className="text-right">
+                            <div className="text-lg font-bold text-slate-900">₦{ride.price_per_seat}</div>
+                            <div className="text-xs text-green-600 font-bold bg-green-50 px-2 py-1 rounded-full inline-block mt-1">{ride.status}</div>
+                         </div>
+                      </div>
+                   ))
+                )}
               </div>
-            ))
-          )}
+           </div>
+
         </div>
       </div>
     </div>
