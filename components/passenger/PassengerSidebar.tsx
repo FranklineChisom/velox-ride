@@ -38,7 +38,7 @@ export default function PassengerSidebar() {
       {/* Logo Area */}
       <div className="p-8 flex items-center justify-center lg:justify-start gap-3">
         <div className="w-10 h-10 bg-black text-white rounded-xl flex items-center justify-center font-bold text-xl shadow-lg shadow-black/10">V</div>
-        <span className="font-bold text-xl text-slate-900 hidden lg:block">VeloxRide</span>
+        <span className="font-bold text-xl text-slate-900 hidden lg:block">Veluxeride</span>
       </div>
 
       {/* Navigation Links */}

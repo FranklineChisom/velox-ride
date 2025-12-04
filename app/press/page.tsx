@@ -3,7 +3,7 @@
 export default function PressPage() {
   return (
     <div className="pt-32 pb-20 w-[90%] md:w-[85%] mx-auto max-w-4xl min-h-screen">
-      <h1 className="text-5xl font-bold mb-8 text-slate-900">VeloxRide in the News</h1>
+      <h1 className="text-5xl font-bold mb-8 text-slate-900">Veluxeride in the News</h1>
       <p className="text-xl text-slate-500 mb-16 leading-relaxed">
         Read about our latest milestones, product launches, and company updates.
       </p>
@@ -13,19 +13,19 @@ export default function PressPage() {
           {
             date: "November 15, 2025",
             source: "TechCabal",
-            title: "VeloxRide Expands to Abuja, Introduces Scheduled Rides",
+            title: "Veluxeride Expands to Abuja, Introduces Scheduled Rides",
             excerpt: "The new ride-sharing platform aims to reduce commuting costs by up to 60% with its innovative scheduled matching system."
           },
           {
             date: "October 2, 2025",
             source: "BusinessDay",
-            title: "How VeloxRide is redefining urban mobility in Nigeria",
+            title: "How Veluxeride is redefining urban mobility in Nigeria",
             excerpt: "An interview with the founding team on solving the chaotic traffic problem in Lagos through shared efficiency."
           },
           {
             date: "September 10, 2025",
             source: "TechPoint Africa",
-            title: "VeloxRide raises seed round to fuel expansion",
+            title: "Veluxeride raises seed round to fuel expansion",
             excerpt: "The company plans to use the funds to onboard 10,000 drivers and improve its safety verification technology."
           }
         ].map((article, i) => (

@@ -358,7 +358,7 @@ export default function Home() {
       <section className="py-24 bg-slate-50">
         <div className="w-[90%] md:w-[85%] mx-auto">
            <div className="text-center mb-16">
-             <h2 className="text-3xl font-bold text-slate-900 mb-4">How VeloxRide Works</h2>
+             <h2 className="text-3xl font-bold text-slate-900 mb-4">How Veluxeride Works</h2>
              <p className="text-slate-500 max-w-2xl mx-auto">Getting where you need to go shouldn&apos;t be complicated. We&apos;ve streamlined the process.</p>
            </div>
 
@@ -425,7 +425,7 @@ export default function Home() {
            <div className="order-1 lg:order-2">
               <h2 className="text-4xl font-bold text-slate-900 mb-6">Reimagining how the city moves.</h2>
               <p className="text-lg text-slate-500 mb-8 leading-relaxed">
-                We are not just another ride-hailing app. VeloxRide is built on the philosophy of shared efficiency. By filling empty seats in cars already on the road, we reduce traffic, lower costs, and create a community of verified professionals.
+                We are not just another ride-hailing app. Veluxeride is built on the philosophy of shared efficiency. By filling empty seats in cars already on the road, we reduce traffic, lower costs, and create a community of verified professionals.
               </p>
               
               <ul className="space-y-4 mb-10">
@@ -485,7 +485,7 @@ export default function Home() {
             <div className="md:w-1/2 px-6">
                <h2 className="text-4xl lg:text-5xl font-bold mb-6">Velox on the go.</h2>
                <p className="text-slate-400 text-lg mb-8 max-w-md">
-                 Download the VeloxRide app for iOS and Android. Book rides, track drivers, and manage payments effortlessly.
+                 Download the Veluxeride app for iOS and Android. Book rides, track drivers, and manage payments effortlessly.
                </p>
                <div className="flex flex-wrap gap-4">
                   <a href={LINKS.appStore} target="_blank" rel="noopener noreferrer" className="bg-white text-black px-6 py-3 rounded-xl font-bold flex items-center gap-3 hover:bg-slate-200 transition">

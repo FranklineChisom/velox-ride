@@ -159,7 +159,7 @@ function AuthContent() {
 
            <div className="mt-10 text-center">
              <p className="text-slate-500">
-               {isSignUp ? 'Already have an account? ' : 'New to VeloxRide? '}
+               {isSignUp ? 'Already have an account? ' : 'New to Veluxeride? '}
                <button
                  onClick={() => setIsSignUp(!isSignUp)}
                  className="text-black font-bold hover:underline underline-offset-4"

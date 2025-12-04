@@ -1,14 +1,14 @@
 // Centralized configuration and static assets
 
 export const APP_CONFIG = {
-  name: 'VeloxRide',
+  name: 'Veluxeride',
   currency: '₦',
   defaultCenter: { lat: 9.0765, lng: 7.3986 }, // Abuja
 };
 
 export const LINKS = {
-  appStore: "https://apps.apple.com/us/app/veloxride/id123456789",
-  playStore: "https://play.google.com/store/apps/details?id=com.veloxride.app",
+  appStore: "https://apps.apple.com/us/app/Veluxeride/id123456789",
+  playStore: "https://play.google.com/store/apps/details?id=com.Veluxeride.app",
 };
 
 export const IMAGES = {
@@ -31,7 +31,7 @@ export const TEXT_CONTENT = {
   safetyBadgeTitle: "Safety Verified",
   safetyBadgeText: "Every trip is insured.",
   footerDesc: "Making urban transportation affordable, safe, and predictable for everyone in Nigeria.",
-  copyright: "© 2025 VeloxRide Nigeria. All rights reserved.",
+  copyright: "© 2025 Veluxeride Nigeria. All rights reserved.",
 };
 
 // Navigation Structures

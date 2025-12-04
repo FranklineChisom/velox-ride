@@ -16,7 +16,7 @@ export default function DrivePage() {
               Drive when you want, <br/> make what you need.
             </h1>
             <p className="text-xl text-slate-500 mb-8 leading-relaxed">
-              Earn on your own schedule. VeloxRide offers flexible earning opportunities with instant payouts and low commissions.
+              Earn on your own schedule. Veluxeride offers flexible earning opportunities with instant payouts and low commissions.
             </p>
             <Link href="/auth?role=driver" className="inline-flex items-center px-8 py-4 bg-black text-white rounded-full font-bold text-lg hover:bg-slate-800 transition shadow-lg">
               Sign up to drive

@@ -8,7 +8,7 @@ export default function SafetyPage() {
       <section className="mb-20">
          <h1 className="text-5xl font-bold mb-6 text-slate-900">Safety is our priority</h1>
          <p className="text-xl text-slate-500 max-w-3xl leading-relaxed">
-           We are committed to the safety of everyone using VeloxRide. From driver verification to real-time trip tracking, our technology helps ensure every ride is safe.
+           We are committed to the safety of everyone using Veluxeride. From driver verification to real-time trip tracking, our technology helps ensure every ride is safe.
          </p>
       </section>
 

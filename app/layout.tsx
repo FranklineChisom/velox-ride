@@ -10,7 +10,7 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'VeloxRide | Elite Urban Mobility',
+  title: 'Veluxeride | Elite Urban Mobility',
   description: 'Experience the premium standard of scheduled ride-sharing in Nigeria.',
 };
 
