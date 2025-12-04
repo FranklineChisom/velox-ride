@@ -1,8 +1,7 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans } from 'next/font/google';
-import SiteHeader from '@/components/SiteHeader';
-import SiteFooter from '@/components/SiteFooter';
+import ClientLayoutWrapper from '@/components/ClientLayoutWrapper';
 
 const jakarta = Plus_Jakarta_Sans({ 
   subsets: ['latin'],
@@ -23,10 +22,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className={jakarta.variable}>
       <body className={`${jakarta.className} antialiased bg-white text-slate-900 selection:bg-black selection:text-white`}>
-        {/* Only show Header/Footer on public pages (layout logic can be refined if dashboard needs different layout) */}
-        <SiteHeader />
-        <main>{children}</main>
-        <SiteFooter />
+        <ClientLayoutWrapper>
+          {children}
+        </ClientLayoutWrapper>
       </body>
     </html>
   );

@@ -40,3 +40,19 @@ export async function getRoute(start: Coordinates, end: Coordinates): Promise<[n
     return null;
   }
 }
+
+// 3. Reverse Geocoding (Coords -> Address Name)
+export async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
+    );
+    const data = await response.json();
+    // Return the display name, prefering the first part (usually street/place name)
+    // You can adjust this to return data.display_name for the full address
+    return data.display_name?.split(',')[0] || "Pinned Location"; 
+  } catch (error) {
+    console.error('Error reverse geocoding:', error);
+    return "Pinned Location";
+  }
+}

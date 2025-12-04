@@ -6,7 +6,7 @@ import { MapPin, Search, Home as HomeIcon, Briefcase, User, Star, ArrowRight, Lo
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { Suggestion, SearchHistoryItem, Coordinates } from '@/types';
-import { getRoute } from '@/lib/osm';
+import { getRoute, reverseGeocode } from '@/lib/osm';
 
 // Load map dynamically
 const LeafletMap = dynamic(() => import('@/components/Map'), { 
@@ -151,9 +151,8 @@ export default function PassengerHome() {
     navigator.geolocation.getCurrentPosition(async (position) => {
       const { latitude, longitude } = position.coords;
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
-        const data = await res.json();
-        const address = data.display_name.split(',')[0];
+        // Reuse the reverseGeocode function we created
+        const address = await reverseGeocode(latitude, longitude);
         
         setQuery(prev => ({ ...prev, origin: address }));
         setCoords(prev => ({ ...prev, pickup: { lat: latitude, lng: longitude } }));
@@ -168,15 +167,31 @@ export default function PassengerHome() {
     });
   };
 
-  const handleMapSelect = (c: Coordinates) => {
-    if(mapMode === 'pickup') {
-        setCoords(prev => ({...prev, pickup: c}));
-        setQuery(prev => ({...prev, origin: 'Pinned Location'}));
-    } else if (mapMode === 'dropoff') {
-        setCoords(prev => ({...prev, dropoff: c}));
-        setQuery(prev => ({...prev, destination: 'Pinned Location'}));
-    }
+  // Updated to fetch address from coordinates
+  const handleMapSelect = async (c: Coordinates) => {
+    const currentMode = mapMode; // Capture mode before resetting
     setMapMode(null);
+
+    if (!currentMode) return;
+
+    // Show temporary loading state in input
+    if(currentMode === 'pickup') {
+        setCoords(prev => ({...prev, pickup: c}));
+        setQuery(prev => ({...prev, origin: 'Fetching address...'}));
+    } else if (currentMode === 'dropoff') {
+        setCoords(prev => ({...prev, dropoff: c}));
+        setQuery(prev => ({...prev, destination: 'Fetching address...'}));
+    }
+
+    // Fetch actual address name
+    const addressName = await reverseGeocode(c.lat, c.lng);
+
+    // Update input with address name
+    if(currentMode === 'pickup') {
+        setQuery(prev => ({...prev, origin: addressName}));
+    } else if (currentMode === 'dropoff') {
+        setQuery(prev => ({...prev, destination: addressName}));
+    }
   }
 
   const handleSearchRedirect = () => {
@@ -188,15 +203,13 @@ export default function PassengerHome() {
   };
 
   return (
-    // Increased top padding to pt-40 (160px) to clear the navbar
-    <div className="p-6 lg:p-10 space-y-8 mt-16 md:mt-20 min-h-screen">
+    <div className="p-6 lg:p-10 space-y-8 pt-32 min-h-screen">
       
       {/* Header Section */}
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          {/* Reduced text size on mobile to prevent wrapping/crowding */}
-          <h1 className="text-2xl md:text-3xl font-bold text-slate-900">{greeting}, {userProfile?.user_metadata?.full_name?.split(' ')[0] || 'Traveler'}</h1>
-          <p className="text-slate-500 mt-1 text-sm md:text-base">Ready for your next journey?</p>
+          <h1 className="text-3xl font-bold text-slate-900">{greeting}, {userProfile?.user_metadata?.full_name?.split(' ')[0] || 'Traveler'}</h1>
+          <p className="text-slate-500 mt-1">Ready for your next journey?</p>
         </div>
         <div className="flex items-center gap-4 bg-white p-2 pr-6 rounded-full border border-slate-100 shadow-sm w-fit hidden md:flex">
           <div className="w-10 h-10 bg-slate-900 text-white rounded-full flex items-center justify-center">
@@ -212,17 +225,17 @@ export default function PassengerHome() {
         </div>
       </header>
 
-      {/* Main Layout Grid */}
-      <div className="grid lg:grid-cols-3 gap-8">
+      <div className="grid lg:grid-cols-3 gap-8 h-[calc(100vh-200px)]">
         
         {/* Left Col: Search & Actions */}
-        <div className="lg:col-span-1 space-y-6">
+        <div className="lg:col-span-1 space-y-6 flex flex-col h-full">
           
           {/* Integrated Search Widget */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 relative z-20" ref={wrapperRef}>
              <h2 className="text-xl font-bold text-slate-900 mb-4">Book a Ride</h2>
              
              <div className="relative">
+                {/* Connector Line */}
                 <div className="absolute left-[19px] top-10 bottom-10 w-0.5 bg-gray-200 z-0"></div>
                 
                 {/* Origin Input */}
@@ -308,7 +321,7 @@ export default function PassengerHome() {
           </div>
 
           {/* Quick Shortcuts */}
-          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex-1">
             <h3 className="font-bold text-slate-900 mb-4 text-sm uppercase tracking-wider">Favorites</h3>
             <div className="space-y-3">
               <div className="flex items-center gap-4 p-3 hover:bg-slate-50 rounded-xl cursor-pointer transition group border border-transparent hover:border-slate-100">
@@ -335,8 +348,8 @@ export default function PassengerHome() {
         </div>
 
         {/* Right Col: Map & Activity - Fixed height map container */}
-        <div className="lg:col-span-2 flex flex-col gap-6 relative">
-          <div className="bg-slate-100 rounded-3xl overflow-hidden shadow-inner border border-slate-200 relative h-[600px]">
+        <div className="lg:col-span-2 flex flex-col gap-6 h-full relative">
+          <div className="flex-1 bg-slate-100 rounded-3xl overflow-hidden shadow-inner border border-slate-200 relative min-h-[400px]">
              <LeafletMap 
                 pickup={coords.pickup}
                 dropoff={coords.dropoff}
