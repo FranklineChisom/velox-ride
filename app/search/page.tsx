@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { getRoute } from '@/lib/osm';
-import { Ride, Suggestion, SearchHistoryItem, Coordinates } from '@/types';
+import { RideWithDriver, Suggestion, SearchHistoryItem, Coordinates } from '@/types';
 import dynamic from 'next/dynamic';
 import { MapPin, Loader2, User, ArrowLeft, Clock, Car, Navigation2, History, X } from 'lucide-react';
 import { format } from 'date-fns';
@@ -32,8 +32,8 @@ function SearchContent() {
   }>({});
 
   const [mapMode, setMapMode] = useState<'pickup' | 'dropoff' | null>(null);
-  const [rides, setRides] = useState<Ride[]>([]);
-  const [filteredRides, setFilteredRides] = useState<Ride[]>([]);
+  const [rides, setRides] = useState<RideWithDriver[]>([]);
+  const [filteredRides, setFilteredRides] = useState<RideWithDriver[]>([]);
   const [loading, setLoading] = useState(false);
   const [route, setRoute] = useState<[number, number][] | undefined>(undefined);
   const [selectedRide, setSelectedRide] = useState<string | null>(null);
@@ -50,7 +50,6 @@ function SearchContent() {
   // Load initial search if params exist
   useEffect(() => {
     if (query.origin && query.destination && !coords.pickup) {
-      // If we have text but no coords (e.g. from URL), try to auto-resolve or just search text
       performSearch(false); 
     }
     fetchRecentSearches();
@@ -92,7 +91,6 @@ function SearchContent() {
 
     setIsTyping(true);
     try {
-      // Using Nominatim for demo purposes. In production, consider Google Places API for better accuracy in Nigeria.
       const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(input)}&countrycodes=ng&limit=5`);
       const data = await res.json();
       setSuggestions(data);
@@ -118,7 +116,7 @@ function SearchContent() {
 
     const newCoords = { lat: parseFloat(suggestion.lat), lng: parseFloat(suggestion.lon) };
     
-    setQuery(prev => ({ ...prev, [activeField]: suggestion.display_name.split(',')[0] })); // Keep it short
+    setQuery(prev => ({ ...prev, [activeField]: suggestion.display_name.split(',')[0] }));
     
     if (activeField === 'origin') {
       setCoords(prev => ({ ...prev, pickup: newCoords }));
@@ -139,14 +137,13 @@ function SearchContent() {
         });
     }
     setSuggestions([]);
-    performSearch(false); // Re-run search logic
+    performSearch(false);
   };
 
   const saveSearchToHistory = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user || !coords.pickup || !coords.dropoff) return;
 
-    // Avoid saving duplicates purely by name for simplicity
     const { error } = await supabase.from('search_history').insert({
       user_id: user.id,
       origin_name: query.origin,
@@ -162,23 +159,21 @@ function SearchContent() {
 
   const performSearch = async (shouldSaveHistory = true) => {
     setLoading(true);
-    setSuggestions([]); // Clear any open suggestions
+    setSuggestions([]);
     
-    // In a real app, you might want to force geocoding here if coords aren't set yet
-    // For this demo, we assume coords are set via suggestions or map clicks for best accuracy,
-    // fallback to string matching if strictly necessary.
-
-    const { data: allRides } = await supabase
+    const { data: allRides, error } = await supabase
       .from('rides')
-      .select('*, profiles(full_name)')
+      .select('*, profiles(full_name, phone_number)')
       .eq('status', 'scheduled')
       .gt('departure_time', new Date().toISOString())
       .order('departure_time', { ascending: true });
 
-    if (allRides) {
-      setRides(allRides as any);
-      const filtered = (allRides as any[]).filter(ride => {
-        // Advanced filtering could happen here (radius search using PostGIS is better for production)
+    if (!error && allRides) {
+      // Cast is safe here assuming database relations are correct
+      const typedRides = allRides as unknown as RideWithDriver[];
+      setRides(typedRides);
+      
+      const filtered = typedRides.filter(ride => {
         const originMatch = ride.origin.toLowerCase().includes(query.origin.toLowerCase());
         const destMatch = ride.destination.toLowerCase().includes(query.destination.toLowerCase());
         return originMatch || destMatch; 
@@ -228,7 +223,6 @@ function SearchContent() {
 
   return (
     <div className="h-screen w-full relative bg-white overflow-hidden font-sans">
-      
       {/* Map Background */}
       <div className="absolute inset-0 z-0">
          <LeafletMap 
@@ -250,16 +244,14 @@ function SearchContent() {
              <ArrowLeft className="w-5 h-5 text-slate-900" />
            </button>
            <h1 className="font-bold text-lg text-slate-900">Request a Ride</h1>
-           <div className="w-9 h-9"></div> {/* Spacer */}
+           <div className="w-9 h-9"></div> 
         </div>
 
         {/* Search Inputs Area */}
         <div className="p-6 bg-white z-20 shadow-sm relative">
            <div className="relative">
-              {/* Connector Line */}
               <div className="absolute left-[27px] top-10 bottom-10 w-0.5 bg-gray-200 z-0"></div>
               
-              {/* Origin Input */}
               <div className="mb-4 relative z-10">
                  <div className="absolute left-4 top-3.5 w-2.5 h-2.5 bg-black rounded-full shadow-[0_0_0_4px_white]"></div>
                  <input 
@@ -274,7 +266,6 @@ function SearchContent() {
                  </button>
               </div>
 
-              {/* Destination Input */}
               <div className="relative z-10">
                  <div className="absolute left-4 top-3.5 w-2.5 h-2.5 bg-slate-900 rounded-sm shadow-[0_0_0_4px_white]"></div>
                  <input 
@@ -289,11 +280,8 @@ function SearchContent() {
                  </button>
               </div>
 
-              {/* Autocomplete Dropdown */}
               {activeField && (suggestions.length > 0 || recentSearches.length > 0) && (
                 <div className="absolute top-full left-0 w-full bg-white rounded-xl shadow-xl border border-gray-100 mt-2 overflow-hidden z-50 max-h-80 overflow-y-auto">
-                  
-                  {/* Suggestions List */}
                   {suggestions.length > 0 && (
                     <div className="py-2">
                       <div className="px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider">Suggestions</div>
@@ -310,7 +298,6 @@ function SearchContent() {
                     </div>
                   )}
 
-                  {/* Recent Searches List (Only show if not typing new search) */}
                   {suggestions.length === 0 && recentSearches.length > 0 && !isTyping && (
                     <div className="py-2 bg-slate-50/50">
                       <div className="px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider flex justify-between items-center">
@@ -412,7 +399,7 @@ function SearchContent() {
   );
 }
 
-function CreditCard(props: any) {
+function CreditCard(props: React.SVGProps<SVGSVGElement>) {
   return <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
 }
 

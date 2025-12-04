@@ -4,8 +4,9 @@ import { createClient } from '@/lib/supabase';
 import { Ride } from '@/types';
 import { APP_CONFIG } from '@/lib/constants';
 import { format } from 'date-fns';
-import { Plus, LogOut, X, TrendingUp, Calendar, ChevronRight, Shield, Loader2, ArrowUpRight, User } from 'lucide-react';
+import { Plus, LogOut, X, TrendingUp, Calendar, ChevronRight, Shield, Loader2, ArrowUpRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { User } from '@supabase/supabase-js';
 
 export default function DriverDashboard() {
   const supabase = createClient();
@@ -14,7 +15,7 @@ export default function DriverDashboard() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
 
   // Form State
   const [formData, setFormData] = useState({

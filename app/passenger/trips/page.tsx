@@ -1,14 +1,14 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, ArrowUpRight, AlertCircle, Loader2 } from 'lucide-react';
+import { Calendar, Clock, AlertCircle, Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
-import { Booking } from '@/types';
+import { BookingWithRide } from '@/types';
 import { format } from 'date-fns';
 import { APP_CONFIG } from '@/lib/constants';
 
 export default function TripsPage() {
   const [activeTab, setActiveTab] = useState<'upcoming' | 'completed' | 'cancelled'>('completed');
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [bookings, setBookings] = useState<BookingWithRide[]>([]);
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
 
@@ -28,13 +28,13 @@ export default function TripsPage() {
       .order('created_at', { ascending: false });
 
     if (error) console.error(error);
-    if (data) setBookings(data as any); // Type assertion for joined query
+    if (data) setBookings(data as unknown as BookingWithRide[]);
     setLoading(false);
   };
 
   const getFilteredTrips = () => {
     const now = new Date();
-    return bookings.filter((b: any) => {
+    return bookings.filter((b) => {
       if (!b.rides) return false;
       const rideDate = new Date(b.rides.departure_time);
       
@@ -53,10 +53,10 @@ export default function TripsPage() {
 
       {/* Tabs */}
       <div className="flex p-1 bg-slate-100 rounded-xl w-fit mb-8">
-        {['upcoming', 'completed', 'cancelled'].map((tab) => (
+        {(['upcoming', 'completed', 'cancelled'] as const).map((tab) => (
           <button
             key={tab}
-            onClick={() => setActiveTab(tab as any)}
+            onClick={() => setActiveTab(tab)}
             className={`px-6 py-2.5 rounded-lg text-sm font-bold capitalize transition-all ${
               activeTab === tab 
                 ? 'bg-white text-black shadow-sm' 
@@ -81,7 +81,7 @@ export default function TripsPage() {
             <p className="text-slate-500 text-sm">Your trip history will appear here.</p>
           </div>
         ) : (
-          filteredTrips.map((b: any) => (
+          filteredTrips.map((b) => (
             <div key={b.id} className="bg-white border border-slate-100 rounded-2xl p-6 hover:border-black/10 hover:shadow-lg transition group cursor-pointer">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 
@@ -91,8 +91,12 @@ export default function TripsPage() {
                     <Clock className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="font-bold text-slate-900">{format(new Date(b.rides.departure_time), 'MMM dd, yyyy')}</div>
-                    <div className="text-xs text-slate-500 font-medium">{format(new Date(b.rides.departure_time), 'h:mm a')}</div>
+                    {b.rides && (
+                        <>
+                            <div className="font-bold text-slate-900">{format(new Date(b.rides.departure_time), 'MMM dd, yyyy')}</div>
+                            <div className="text-xs text-slate-500 font-medium">{format(new Date(b.rides.departure_time), 'h:mm a')}</div>
+                        </>
+                    )}
                   </div>
                 </div>
 
@@ -100,18 +104,18 @@ export default function TripsPage() {
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-2 h-2 bg-black rounded-full"></div>
-                    <span className="text-sm font-semibold text-slate-700">{b.rides.origin}</span>
+                    <span className="text-sm font-semibold text-slate-700">{b.rides?.origin}</span>
                   </div>
                   <div className="pl-[3px] border-l-2 border-slate-100 h-4 ml-[3px] mb-1"></div>
                   <div className="flex items-center gap-3">
                     <div className="w-2 h-2 bg-slate-400 rounded-sm"></div>
-                    <span className="text-sm font-semibold text-slate-900">{b.rides.destination}</span>
+                    <span className="text-sm font-semibold text-slate-900">{b.rides?.destination}</span>
                   </div>
                 </div>
 
                 {/* Price & Status */}
                 <div className="text-right">
-                  <div className="text-lg font-bold text-slate-900 mb-1">{APP_CONFIG.currency}{b.rides.price_per_seat * b.seats_booked}</div>
+                  <div className="text-lg font-bold text-slate-900 mb-1">{APP_CONFIG.currency}{b.rides ? b.rides.price_per_seat * b.seats_booked : 0}</div>
                   <div className={`text-xs font-bold px-2 py-1 rounded-md inline-flex items-center gap-1 ${
                     b.status === 'confirmed' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
                   }`}>

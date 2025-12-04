@@ -34,7 +34,8 @@ export const TEXT_CONTENT = {
   copyright: "© 2025 Veluxeride Nigeria. All rights reserved.",
 };
 
-// Navigation Structures
+// --- Navigation Structures ---
+
 export const NAV_LINKS = {
   main: [
     { label: 'Ride', href: '/ride' },
@@ -58,10 +59,34 @@ export const NAV_LINKS = {
   ],
 };
 
+// Passenger Dashboard Nav
 export const PASSENGER_NAV = [
   { label: 'Home', href: '/passenger', icon: 'Home' },
   { label: 'My Trips', href: '/passenger/trips', icon: 'Clock' },
   { label: 'Wallet', href: '/passenger/wallet', icon: 'CreditCard' },
   { label: 'Settings', href: '/passenger/settings', icon: 'Settings' },
   { label: 'Support', href: '/passenger/support', icon: 'HelpCircle' },
+];
+
+// Driver Dashboard Nav (Concept)
+export const DRIVER_NAV = [
+  { label: 'Dashboard', href: '/driver', icon: 'Home' },
+  { label: 'Trips', href: '/driver/trips', icon: 'Map' },
+  { label: 'Earnings', href: '/driver/earnings', icon: 'DollarSign' },
+  { label: 'Settings', href: '/driver/settings', icon: 'Settings' },
+];
+
+// Employee/Staff Nav
+export const STAFF_NAV = [
+  { label: 'Overview', href: '/staff', icon: 'LayoutDashboard' },
+  { label: 'User Support', href: '/staff/users', icon: 'Users' },
+  { label: 'Ride Monitor', href: '/staff/rides', icon: 'Activity' },
+];
+
+// Superadmin Nav
+export const ADMIN_NAV = [
+  { label: 'Master View', href: '/admin', icon: 'Shield' },
+  { label: 'Financials', href: '/admin/finance', icon: 'BarChart' },
+  { label: 'Staff Management', href: '/admin/staff', icon: 'Briefcase' },
+  { label: 'System Health', href: '/admin/system', icon: 'Server' },
 ];

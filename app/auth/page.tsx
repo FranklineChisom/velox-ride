@@ -2,9 +2,10 @@
 import { useState, Suspense } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Loader2, ArrowLeft, Mail, Lock, User, Briefcase } from 'lucide-react';
+import { Loader2, ArrowLeft, Mail, Lock, User, Briefcase, Shield } from 'lucide-react';
 import Link from 'next/link';
 import { IMAGES } from '@/lib/constants';
+import { UserRole } from '@/types';
 
 function AuthContent() {
   const [email, setEmail] = useState('');
@@ -18,8 +19,21 @@ function AuthContent() {
   const searchParams = useSearchParams();
   const supabase = createClient();
   
-  const role = searchParams.get('role') === 'driver' ? 'driver' : 'passenger';
+  const queryRole = searchParams.get('role');
+  const role: UserRole = (queryRole === 'driver' || queryRole === 'passenger') ? queryRole : 'passenger';
   const next = searchParams.get('next');
+
+  // Helper to determine destination based on role
+  const getDestination = (userRole: string) => {
+    if (next) return decodeURIComponent(next);
+    switch(userRole) {
+      case 'driver': return '/driver';
+      case 'passenger': return '/passenger';
+      case 'superadmin': return '/admin';
+      case 'employee': return '/staff';
+      default: return '/passenger';
+    }
+  };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,25 +42,36 @@ function AuthContent() {
 
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
+        // Sign Up (Typically only for Passengers and Drivers)
+        const { error: signUpError } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { full_name: fullName, role } },
+          options: { 
+            data: { 
+              full_name: fullName, 
+              role: role // 'passenger' or 'driver'
+            } 
+          },
         });
-        if (error) throw error;
+        if (signUpError) throw signUpError;
         alert('Check your email for confirmation!');
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+        // Sign In
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+        if (signInError) throw signInError;
         
-        if (next) {
-          router.push(decodeURIComponent(next));
-        } else {
-          router.push(role === 'driver' ? '/driver' : '/passenger');
+        if (data.user) {
+          // Check user role metadata for redirection
+          const userRole = data.user.user_metadata?.role || 'passenger';
+          router.push(getDestination(userRole));
         }
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('An unexpected error occurred');
+      }
     } finally {
       setLoading(false);
     }
@@ -75,16 +100,11 @@ function AuthContent() {
       </div>
 
       {/* Right Panel - Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 relative">
-        <Link href="/" className="absolute top-8 right-8 text-slate-500 hover:text-black transition flex items-center gap-2 font-bold text-sm">
-          <ArrowLeft className="w-4 h-4" /> Back to Home
-        </Link>
+      <div className="w-full lg:w-1/2 flex mt-20 items-center justify-center p-8 relative">
+
 
         <div className="w-full max-w-md">
-           <div className="mb-10">
-             <div className="inline-block p-3 bg-slate-50 rounded-2xl mb-6">
-                {role === 'driver' ? <Briefcase className="w-8 h-8 text-black" /> : <User className="w-8 h-8 text-black" />}
-             </div>
+           <div className="mb-10">  
              <h1 className="text-4xl font-bold text-slate-900 mb-2">
                {isSignUp ? 'Create Account' : 'Welcome Back'}
              </h1>

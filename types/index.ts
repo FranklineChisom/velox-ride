@@ -1,11 +1,13 @@
 // Centralized type definitions
 
+export type UserRole = 'passenger' | 'driver' | 'employee' | 'superadmin';
+
 export interface Profile {
   id: string;
   email: string;
   full_name: string;
   phone_number: string | null;
-  role: 'passenger' | 'driver';
+  role: UserRole;
   created_at: string;
 }
 
@@ -18,7 +20,13 @@ export interface Ride {
   total_seats: number;
   price_per_seat: number;
   status: 'scheduled' | 'active' | 'completed' | 'cancelled';
-  profiles?: Profile; // For joining driver details
+  // Foreign key relations might not be present in the raw table type, 
+  // but we handle them in the Join types below.
+}
+
+// Type for a Ride that includes the Driver's profile details
+export interface RideWithDriver extends Ride {
+  profiles: Pick<Profile, 'full_name' | 'phone_number'> | null;
 }
 
 export interface Booking {
@@ -27,8 +35,12 @@ export interface Booking {
   passenger_id: string;
   seats_booked: number;
   status: 'confirmed' | 'cancelled';
-  rides?: Ride; // For joining ride details
   created_at: string;
+}
+
+// Type for a Booking that includes the Ride details
+export interface BookingWithRide extends Booking {
+  rides: Ride | null;
 }
 
 export interface Wallet {

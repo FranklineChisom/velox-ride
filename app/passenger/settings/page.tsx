@@ -1,15 +1,21 @@
 'use client';
 import { useState, useEffect, useTransition } from 'react';
-import { User, Bell, Shield, MapPin, ChevronRight, Mail, Phone, Lock, Loader2, Save, Trash2, Plus, X } from 'lucide-react';
+import { Bell, MapPin, ChevronRight, Mail, Phone, Lock, Loader2, Save, Trash2, Plus, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
-import { SavedPlace } from '@/types';
+import { Profile, SavedPlace } from '@/types';
 
 // --- Sub-Components ---
 
-const ProfileSection = ({ profile, onUpdate }: { profile: any, onUpdate: (data: any) => Promise<void> }) => {
+const ProfileSection = ({ profile, onUpdate }: { profile: Profile | null, onUpdate: (data: Partial<Profile>) => Promise<void> }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({ full_name: profile?.full_name || '', phone_number: profile?.phone_number || '' });
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (profile) {
+        setFormData({ full_name: profile.full_name || '', phone_number: profile.phone_number || '' });
+    }
+  }, [profile]);
 
   const handleSave = () => {
     startTransition(async () => {
@@ -62,7 +68,7 @@ const ProfileSection = ({ profile, onUpdate }: { profile: any, onUpdate: (data: 
           {isEditing ? (
             <input
               className="bg-transparent border-b border-slate-300 outline-none w-full text-sm font-medium text-slate-900 placeholder:text-slate-400"
-              value={formData.phone_number}
+              value={formData.phone_number || ''}
               placeholder="+234..."
               onChange={e => setFormData({ ...formData, phone_number: e.target.value })}
             />
@@ -160,7 +166,7 @@ const SavedPlacesSection = ({ places, onAdd, onRemove }: { places: SavedPlace[],
 
 export default function SettingsPage() {
   const supabase = createClient();
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [places, setPlaces] = useState<SavedPlace[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -183,7 +189,9 @@ export default function SettingsPage() {
     setLoading(false);
   };
 
-  const updateProfile = async (data: any) => {
+  const updateProfile = async (data: Partial<Profile>) => {
+    if (!profile) return;
+    
     const { error } = await supabase
       .from('profiles')
       .update({ full_name: data.full_name, phone_number: data.phone_number })
