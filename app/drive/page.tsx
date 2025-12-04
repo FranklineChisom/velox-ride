@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { DollarSign, Clock, ShieldCheck } from 'lucide-react';
+import { IMAGES } from '@/lib/constants';
 
 export default function DrivePage() {
   return (
@@ -8,7 +9,7 @@ export default function DrivePage() {
       <section className="mb-24">
         <div className="grid md:grid-cols-2 gap-12 items-center">
           <div className="order-2 md:order-1 h-[500px] rounded-[2.5rem] overflow-hidden shadow-2xl">
-            <img src="https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?q=80&w=2940" className="object-cover w-full h-full hover:scale-105 transition duration-700" alt="Driver" />
+            <img src={IMAGES.driverHero} className="object-cover w-full h-full hover:scale-105 transition duration-700" alt="Driver" />
           </div>
           <div className="order-1 md:order-2">
             <h1 className="text-5xl font-bold mb-6 text-slate-900 leading-tight">

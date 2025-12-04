@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { Briefcase, PieChart, Users } from 'lucide-react';
+import { APP_CONFIG } from '@/lib/constants';
 
 export default function BusinessPage() {
   return (

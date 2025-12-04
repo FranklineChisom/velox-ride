@@ -4,24 +4,16 @@ import { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-
-// Fix for default markers
-const iconUrl = 'https://unpkg.com/leaflet@1.9.3/dist/images/marker-icon.png';
-const iconRetinaUrl = 'https://unpkg.com/leaflet@1.9.3/dist/images/marker-icon-2x.png';
-const shadowUrl = 'https://unpkg.com/leaflet@1.9.3/dist/images/marker-shadow.png';
+import { APP_CONFIG, IMAGES } from '@/lib/constants';
+import { Coordinates } from '@/types';
 
 const customIcon = new L.Icon({
-  iconUrl,
-  iconRetinaUrl,
-  shadowUrl,
+  iconUrl: IMAGES.mapMarkerIcon,
+  iconRetinaUrl: IMAGES.mapMarkerIconRetina,
+  shadowUrl: IMAGES.mapMarkerShadow,
   iconSize: [25, 41],
   iconAnchor: [12, 41],
 });
-
-interface Coordinates {
-  lat: number;
-  lng: number;
-}
 
 interface MapProps {
   pickup?: Coordinates;
@@ -58,19 +50,16 @@ function MapUpdater({ pickup, dropoff }: { pickup?: Coordinates; dropoff?: Coord
 }
 
 export default function Map({ pickup, dropoff, routeCoordinates, onPickupSelect, onDropoffSelect, selectionMode }: MapProps) {
-  const defaultCenter = { lat: 9.0765, lng: 7.3986 }; // Abuja
-
   return (
     <div className="h-full w-full relative bg-velox-light">
       <MapContainer
-        center={[defaultCenter.lat, defaultCenter.lng]}
+        center={[APP_CONFIG.defaultCenter.lat, APP_CONFIG.defaultCenter.lng]}
         zoom={13}
         style={{ height: '100%', width: '100%', background: '#F8FAFC' }}
       >
-        {/* CartoDB Positron: A clean, light map style perfect for modern apps */}
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+          url={IMAGES.mapTileLayer}
         />
 
         {selectionMode === 'pickup' && onPickupSelect && (

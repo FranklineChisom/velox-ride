@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { Clock, ShieldCheck, Wallet } from 'lucide-react';
+import { IMAGES } from '@/lib/constants';
 
 export default function RidePage() {
   return (
@@ -19,7 +20,7 @@ export default function RidePage() {
             </Link>
           </div>
           <div className="h-[500px] rounded-[2.5rem] overflow-hidden shadow-2xl">
-            <img src="https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?q=80&w=2070" className="object-cover w-full h-full hover:scale-105 transition duration-700" alt="Passenger" />
+            <img src={IMAGES.passengerHero} className="object-cover w-full h-full hover:scale-105 transition duration-700" alt="Passenger" />
           </div>
         </div>
       </section>

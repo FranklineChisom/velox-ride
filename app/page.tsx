@@ -3,13 +3,12 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
+import { Suggestion, SearchHistoryItem } from '@/types';
+import { LINKS, IMAGES, TEXT_CONTENT } from '@/lib/constants';
 import { 
   ArrowRight, 
   ShieldCheck,
-  Menu, 
-  X,
   MapPin,
-  Smartphone,
   Clock,
   UserCheck,
   Zap,
@@ -20,36 +19,10 @@ import {
   ArrowUpDown
 } from 'lucide-react';
 
-// --- Types ---
-interface Suggestion {
-  place_id: number;
-  display_name: string;
-  lat: string;
-  lon: string;
-}
-
-interface SearchHistoryItem {
-  id: string;
-  destination_name: string;
-  created_at: string;
-}
-
-// --- Configuration (Dynamic Content) ---
-const APP_STORE_LINK = "https://apps.apple.com/us/app/veloxride/id123456789"; 
-const PLAY_STORE_LINK = "https://play.google.com/store/apps/details?id=com.veloxride.app";
-
-// Dynamic Images & Text - Editable by Super Admin
-const HERO_IMAGE_URL = "https://images.unsplash.com/photo-1554223090-7e482851df45?q=80&w=2940&auto=format&fit=crop";
-const PHONE_MOCKUP_IMAGE_URL = "https://images.unsplash.com/photo-1512428559087-560fa5db7df7?auto=format&fit=crop&q=80&w=800";
-
-const SAFETY_BADGE_TITLE = "Safety Verified";
-const SAFETY_BADGE_TEXT = "Every trip is insured.";
-
 export default function Home() {
   const router = useRouter();
   const supabase = createClient();
   
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'schedule' | 'now'>('schedule');
   
   // Search State
@@ -182,10 +155,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-white text-slate-900 font-sans selection:bg-black selection:text-white">
-      
-
       {/* --- Hero Section --- */}
-      {/* FIX: Removed fixed height constraint (90vh) and used min-height with padding-top (pt-28) to clear navbar */}
       <section className="pt-32 pb-16 w-[90%] md:w-[85%] mx-auto bg-white min-h-[90vh] flex items-center relative">
         <div className="grid lg:grid-cols-2 gap-16 items-center w-full h-full">
           
@@ -363,7 +333,7 @@ export default function Home() {
           {/* Hero Visual */}
           <div className="relative hidden lg:block h-full max-h-[650px] w-full bg-slate-100 rounded-[3rem] overflow-hidden shadow-float group">
             <img 
-              src={HERO_IMAGE_URL}
+              src={IMAGES.hero}
               alt="Urban Mobility" 
               className="w-full h-full object-cover scale-105 group-hover:scale-100 transition duration-1000 ease-in-out"
             />
@@ -374,8 +344,8 @@ export default function Home() {
                    <ShieldCheck className="w-6 h-6" />
                  </div>
                  <div>
-                   <p className="font-bold text-slate-900 text-lg">{SAFETY_BADGE_TITLE}</p>
-                   <p className="text-xs text-slate-600 font-medium">{SAFETY_BADGE_TEXT}</p>
+                   <p className="font-bold text-slate-900 text-lg">{TEXT_CONTENT.safetyBadgeTitle}</p>
+                   <p className="text-xs text-slate-600 font-medium">{TEXT_CONTENT.safetyBadgeText}</p>
                  </div>
                </div>
             </div>
@@ -486,7 +456,7 @@ export default function Home() {
          <div className="w-[90%] md:w-[85%] mx-auto flex flex-col lg:flex-row items-center gap-20">
             <div className="lg:w-1/2 order-2 lg:order-1">
                <div className="relative h-[500px] w-full rounded-[2.5rem] overflow-hidden shadow-float">
-                  <img src="https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?auto=format&fit=crop&q=80&w=2940" className="object-cover w-full h-full hover:scale-105 transition duration-700" alt="Driver" />
+                  <img src={IMAGES.driverHero} className="object-cover w-full h-full hover:scale-105 transition duration-700" alt="Driver" />
                   <div className="absolute inset-0 bg-black/10"></div>
                </div>
             </div>
@@ -518,11 +488,11 @@ export default function Home() {
                  Download the VeloxRide app for iOS and Android. Book rides, track drivers, and manage payments effortlessly.
                </p>
                <div className="flex flex-wrap gap-4">
-                  <a href={APP_STORE_LINK} target="_blank" rel="noopener noreferrer" className="bg-white text-black px-6 py-3 rounded-xl font-bold flex items-center gap-3 hover:bg-slate-200 transition">
+                  <a href={LINKS.appStore} target="_blank" rel="noopener noreferrer" className="bg-white text-black px-6 py-3 rounded-xl font-bold flex items-center gap-3 hover:bg-slate-200 transition">
                     <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.21-1.98 1.07-3.11-1.06.05-2.36.71-3.13 1.6-.66.75-1.24 1.95-1.08 3.09 1.17.09 2.37-.74 3.14-1.58z"/></svg>
                     <span>App Store</span>
                   </a>
-                  <a href={PLAY_STORE_LINK} target="_blank" rel="noopener noreferrer" className="bg-transparent border border-white/20 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-3 hover:bg-white/10 transition">
+                  <a href={LINKS.playStore} target="_blank" rel="noopener noreferrer" className="bg-transparent border border-white/20 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-3 hover:bg-white/10 transition">
                     <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current"><path d="M3,20.5V3.5C3,2.91 3.34,2.39 3.84,2.15L13.69,12L3.84,21.85C3.34,21.6 3,21.09 3,20.5M16.81,15.12L6.05,21.34L14.54,12.85L16.81,15.12M20.3,4.26S20.3,4.26 20.3,4.26L4.26,13.5L14.55,11.15L16.81,8.88L20.3,4.26M15.12,7.19L6.05,2.66L16.81,8.88L15.12,7.19Z"/></svg>
                     <span>Google Play</span>
                   </a>
@@ -532,7 +502,7 @@ export default function Home() {
                {/* Phone Mockup */}
                <div className="relative w-72 h-[550px] bg-slate-800 rounded-[3rem] border-[8px] border-slate-700 shadow-2xl overflow-hidden transform rotate-6 hover:rotate-0 transition duration-500">
                   <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-slate-700 rounded-b-xl z-20"></div>
-                  <img src={PHONE_MOCKUP_IMAGE_URL} className="w-full h-full object-cover opacity-80" alt="App Screen"/>
+                  <img src={IMAGES.phoneMockup} className="w-full h-full object-cover opacity-80" alt="App Screen"/>
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex flex-col justify-end p-8">
                      <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center mb-4">
                        <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center text-white font-bold">V</div>

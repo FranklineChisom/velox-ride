@@ -1,5 +1,6 @@
 'use client';
 import { ShieldCheck, MapPin, Phone } from 'lucide-react';
+import { IMAGES } from '@/lib/constants';
 
 export default function SafetyPage() {
   return (
@@ -29,7 +30,7 @@ export default function SafetyPage() {
             </div>
          </div>
          <div className="bg-slate-100 rounded-[2.5rem] h-[500px] overflow-hidden shadow-2xl">
-            <img src="https://images.unsplash.com/photo-1549923746-c502d488b3ea?q=80&w=2071" className="object-cover w-full h-full hover:scale-105 transition duration-700" alt="Safety" />
+            <img src={IMAGES.safetyHero} className="object-cover w-full h-full hover:scale-105 transition duration-700" alt="Safety" />
          </div>
       </div>
     </div>

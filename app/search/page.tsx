@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense, useRef } from 'react';
+import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { getRoute } from '@/lib/osm';
-import { Ride } from '@/types';
+import { Ride, Suggestion, SearchHistoryItem, Coordinates } from '@/types';
 import dynamic from 'next/dynamic';
-import { MapPin, Calendar, Loader2, User, ArrowLeft, Clock, Car, Navigation2, History, X } from 'lucide-react';
+import { MapPin, Loader2, User, ArrowLeft, Clock, Car, Navigation2, History, X } from 'lucide-react';
 import { format } from 'date-fns';
 
 // Dynamic import for Leaflet map to avoid SSR issues
@@ -14,24 +14,6 @@ const LeafletMap = dynamic(() => import('@/components/Map'), {
   ssr: false,
   loading: () => <div className="h-full w-full bg-gray-50 animate-pulse flex items-center justify-center text-slate-400">Loading Map...</div>
 });
-
-// Interface for Autocomplete Suggestions
-interface Suggestion {
-  place_id: number;
-  display_name: string;
-  lat: string;
-  lon: string;
-}
-
-interface SearchHistoryItem {
-  id: string;
-  origin_name: string;
-  destination_name: string;
-  origin_lat: number;
-  origin_lng: number;
-  destination_lat: number;
-  destination_lng: number;
-}
 
 function SearchContent() {
   const searchParams = useSearchParams();
@@ -45,8 +27,8 @@ function SearchContent() {
   });
   
   const [coords, setCoords] = useState<{
-    pickup?: { lat: number; lng: number };
-    dropoff?: { lat: number; lng: number };
+    pickup?: Coordinates;
+    dropoff?: Coordinates;
   }>({});
 
   const [mapMode, setMapMode] = useState<'pickup' | 'dropoff' | null>(null);
@@ -149,11 +131,13 @@ function SearchContent() {
   };
 
   const handleHistorySelect = (item: SearchHistoryItem) => {
-    setQuery({ origin: item.origin_name, destination: item.destination_name });
-    setCoords({
-      pickup: { lat: item.origin_lat, lng: item.origin_lng },
-      dropoff: { lat: item.destination_lat, lng: item.destination_lng }
-    });
+    setQuery({ origin: item.origin_name || '', destination: item.destination_name });
+    if(item.origin_lat && item.origin_lng && item.destination_lat && item.destination_lng){
+        setCoords({
+            pickup: { lat: item.origin_lat, lng: item.origin_lng },
+            dropoff: { lat: item.destination_lat, lng: item.destination_lng }
+        });
+    }
     setSuggestions([]);
     performSearch(false); // Re-run search logic
   };
@@ -231,7 +215,7 @@ function SearchContent() {
     }
   };
 
-  const handleMapSelect = (c: {lat: number, lng: number}) => {
+  const handleMapSelect = (c: Coordinates) => {
       if(mapMode === 'pickup') {
           setCoords(prev => ({...prev, pickup: c}));
           setQuery(prev => ({...prev, origin: 'Pinned Location'}));

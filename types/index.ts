@@ -1,3 +1,5 @@
+// Centralized type definitions
+
 export interface Profile {
   id: string;
   email: string;
@@ -26,4 +28,28 @@ export interface Booking {
   seats_booked: number;
   status: 'confirmed' | 'cancelled';
   rides?: Ride; // For joining ride details
+}
+
+// Location & Maps
+export interface Coordinates {
+  lat: number;
+  lng: number;
+}
+
+export interface Suggestion {
+  place_id: number;
+  display_name: string;
+  lat: string;
+  lon: string;
+}
+
+export interface SearchHistoryItem {
+  id: string;
+  destination_name: string;
+  origin_name?: string;
+  origin_lat?: number;
+  origin_lng?: number;
+  destination_lat?: number;
+  destination_lng?: number;
+  created_at?: string;
 }

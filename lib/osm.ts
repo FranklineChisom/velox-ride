@@ -1,9 +1,4 @@
-// Helper functions for Geocoding (Address -> Coords) and Routing
-
-export interface Coordinates {
-  lat: number;
-  lng: number;
-}
+import { Coordinates } from '@/types';
 
 // 1. Search for an address (Geocoding) using Nominatim
 export async function searchLocation(query: string): Promise<Coordinates | null> {

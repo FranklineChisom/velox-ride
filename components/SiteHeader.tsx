@@ -3,6 +3,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
+import { APP_CONFIG, NAV_LINKS } from '@/lib/constants';
 
 export default function SiteHeader() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -16,17 +17,17 @@ export default function SiteHeader() {
         <div className="flex items-center gap-12">
           <Link href="/" className="flex items-center gap-2 group">
             <div className="w-10 h-10 bg-black text-white rounded-xl flex items-center justify-center font-bold text-xl tracking-tight shadow-lg shadow-black/20 transition-transform group-hover:scale-105">V</div>
-            <span className="text-2xl font-bold tracking-tight text-slate-900">VeloxRide</span>
+            <span className="text-2xl font-bold tracking-tight text-slate-900">{APP_CONFIG.name}</span>
           </Link>
           
           <div className="hidden md:flex items-center gap-8 text-sm font-semibold text-slate-600">
-            {['Ride', 'Drive', 'Business', 'Safety'].map((item) => (
+            {NAV_LINKS.main.map((item) => (
               <Link 
-                key={item} 
-                href={`/${item.toLowerCase()}`} 
-                className={`hover:text-black transition-colors ${isActive(`/${item.toLowerCase()}`) ? 'text-black font-bold' : ''}`}
+                key={item.label} 
+                href={item.href} 
+                className={`hover:text-black transition-colors ${isActive(item.href) ? 'text-black font-bold' : ''}`}
               >
-                {item}
+                {item.label}
               </Link>
             ))}
           </div>
@@ -46,17 +47,19 @@ export default function SiteHeader() {
 
       {/* Mobile Menu */}
       {mobileMenuOpen && (
-        <div className="md:hidden absolute top-20 left-0 w-full bg-white border-b border-slate-100 p-6 shadow-2xl flex flex-col gap-4 animate-slide-up">
-            {['Ride', 'Drive', 'Business', 'Safety', 'About'].map((item) => (
+        <div className="md:hidden absolute top-20 left-0 w-full bg-white border-b border-slate-100 p-6 shadow-2xl flex flex-col gap-4 animate-slide-up h-[calc(100vh-80px)] overflow-y-auto">
+            {NAV_LINKS.main.map((item) => (
               <Link 
-                key={item} 
-                href={`/${item.toLowerCase()}`} 
+                key={item.label} 
+                href={item.href} 
                 className="text-lg font-medium text-slate-900" 
                 onClick={() => setMobileMenuOpen(false)}
               >
-                {item}
+                {item.label}
               </Link>
             ))}
+            <Link href="/about" className="text-lg font-medium text-slate-900" onClick={() => setMobileMenuOpen(false)}>About</Link>
+            
             <div className="h-px bg-slate-100 w-full my-2"></div>
             <Link href="/auth?role=passenger" className="w-full bg-slate-100 text-slate-900 py-3.5 rounded-lg text-center font-bold" onClick={() => setMobileMenuOpen(false)}>Log In</Link>
             <Link href="/auth?role=passenger" className="w-full bg-black text-white py-3.5 rounded-lg text-center font-bold" onClick={() => setMobileMenuOpen(false)}>Sign Up</Link>

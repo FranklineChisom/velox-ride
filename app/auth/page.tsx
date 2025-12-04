@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Loader2, ArrowLeft, Mail, Lock, User, Briefcase } from 'lucide-react';
 import Link from 'next/link';
+import { IMAGES } from '@/lib/constants';
 
 function AuthContent() {
   const [email, setEmail] = useState('');
@@ -58,10 +59,7 @@ function AuthContent() {
       <div className="hidden lg:flex w-1/2 bg-black relative overflow-hidden items-center justify-center p-12">
         <div className="absolute inset-0 opacity-40">
            <img 
-             src={role === 'driver' 
-               ? "https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?auto=format&fit=crop&q=80&w=2000"
-               : "https://images.unsplash.com/photo-1556122071-e404eaedb77f?auto=format&fit=crop&q=80&w=2000"
-             }
+             src={role === 'driver' ? IMAGES.authDriver : IMAGES.authPassenger}
              className="w-full h-full object-cover"
              alt="Background"
            />

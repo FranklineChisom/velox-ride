@@ -2,8 +2,9 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import { Ride } from '@/types';
+import { APP_CONFIG } from '@/lib/constants';
 import { format } from 'date-fns';
-import { MapPin, Plus, LogOut, X, TrendingUp, Calendar, ChevronRight, Shield, Loader2, ArrowUpRight } from 'lucide-react';
+import { Plus, LogOut, X, TrendingUp, Calendar, ChevronRight, Shield, Loader2, ArrowUpRight, User } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export default function DriverDashboard() {
@@ -13,6 +14,7 @@ export default function DriverDashboard() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
+  const [user, setUser] = useState<any>(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -25,15 +27,16 @@ export default function DriverDashboard() {
   });
 
   useEffect(() => {
-    fetchDriverRides();
+    fetchDriverData();
   }, []);
 
-  const fetchDriverRides = async () => {
+  const fetchDriverData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
         router.push('/auth?role=driver');
         return;
     }
+    setUser(user);
 
     const { data } = await supabase
       .from('rides')
@@ -47,7 +50,6 @@ export default function DriverDashboard() {
 
   const handleCreateRide = async (e: React.FormEvent) => {
     e.preventDefault();
-    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
     const departureTime = new Date(`${formData.date}T${formData.time}`).toISOString();
@@ -66,7 +68,7 @@ export default function DriverDashboard() {
       alert(error.message);
     } else {
       setShowForm(false);
-      fetchDriverRides();
+      fetchDriverData();
       setFormData({ origin: '', destination: '', date: '', time: '', seats: 4, price: 0 });
     }
   };
@@ -96,7 +98,7 @@ export default function DriverDashboard() {
                   Online
                 </button>
              </div>
-             <button onClick={async () => { await supabase.auth.signOut(); router.push('/'); }} className="text-slate-400 hover:text-red-500 transition">
+             <button onClick={async () => { await supabase.auth.signOut(); router.push('/'); }} className="text-slate-400 hover:text-red-500 transition" title="Sign Out">
                <LogOut className="w-5 h-5"/>
              </button>
           </div>
@@ -113,9 +115,9 @@ export default function DriverDashboard() {
               <div className="bg-black text-white p-6 rounded-3xl shadow-xl relative overflow-hidden">
                  <div className="relative z-10">
                     <p className="text-slate-400 text-sm font-medium mb-1">Today&apos;s Earnings</p>
-                    <h2 className="text-4xl font-bold mb-4">₦42,500</h2>
+                    <h2 className="text-4xl font-bold mb-4">{APP_CONFIG.currency}0</h2>
                     <div className="flex items-center gap-2 text-green-400 text-sm font-bold bg-white/10 w-fit px-3 py-1 rounded-full">
-                       <TrendingUp className="w-4 h-4" /> +12% vs last week
+                       <TrendingUp className="w-4 h-4" /> --%
                     </div>
                  </div>
                  <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -mr-10 -mt-10"></div>
@@ -125,16 +127,16 @@ export default function DriverDashboard() {
               <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
                  <h3 className="font-bold text-slate-900 mb-4">Quick Actions</h3>
                  <div className="space-y-2">
-                    <button onClick={() => setShowForm(true)} className="w-full flex items-center justify-between p-4 rounded-xl bg-slate-50 hover:bg-slate-100 transition group">
+                    <button onClick={() => setShowForm(true)} className="w-full flex items-center justify-between p-4 rounded-xl bg-slate-50 hover:bg-slate-100 transition group text-left">
                        <div className="flex items-center gap-3">
-                          <div className="bg-white p-2 rounded-lg shadow-sm"><Plus className="w-5 h-5 text-black"/></div>
+                          <div className="bg-white p-2 rounded-lg shadow-sm border border-slate-100"><Plus className="w-5 h-5 text-black"/></div>
                           <span className="font-bold text-sm">Post a Trip</span>
                        </div>
                        <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-black"/>
                     </button>
-                    <button className="w-full flex items-center justify-between p-4 rounded-xl bg-slate-50 hover:bg-slate-100 transition group">
+                    <button className="w-full flex items-center justify-between p-4 rounded-xl bg-slate-50 hover:bg-slate-100 transition group text-left">
                        <div className="flex items-center gap-3">
-                          <div className="bg-white p-2 rounded-lg shadow-sm"><Shield className="w-5 h-5 text-black"/></div>
+                          <div className="bg-white p-2 rounded-lg shadow-sm border border-slate-100"><Shield className="w-5 h-5 text-black"/></div>
                           <span className="font-bold text-sm">Documents</span>
                        </div>
                        <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-black"/>
@@ -160,31 +162,31 @@ export default function DriverDashboard() {
                          <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
                                <label className="text-xs font-bold text-slate-500 uppercase">Origin</label>
-                               <input className="w-full p-3 bg-slate-50 rounded-xl font-medium outline-none focus:ring-2 focus:ring-black" required placeholder="Gwarinpa" value={formData.origin} onChange={e => setFormData({...formData, origin: e.target.value})}/>
+                               <input className="w-full p-3 bg-slate-50 rounded-xl font-medium outline-none focus:ring-2 focus:ring-black border border-slate-200" required placeholder="Gwarinpa" value={formData.origin} onChange={e => setFormData({...formData, origin: e.target.value})}/>
                             </div>
                             <div className="space-y-1">
                                <label className="text-xs font-bold text-slate-500 uppercase">Destination</label>
-                               <input className="w-full p-3 bg-slate-50 rounded-xl font-medium outline-none focus:ring-2 focus:ring-black" required placeholder="Wuse 2" value={formData.destination} onChange={e => setFormData({...formData, destination: e.target.value})}/>
+                               <input className="w-full p-3 bg-slate-50 rounded-xl font-medium outline-none focus:ring-2 focus:ring-black border border-slate-200" required placeholder="Wuse 2" value={formData.destination} onChange={e => setFormData({...formData, destination: e.target.value})}/>
                             </div>
                          </div>
                          <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
                                <label className="text-xs font-bold text-slate-500 uppercase">Date</label>
-                               <input type="date" className="w-full p-3 bg-slate-50 rounded-xl font-medium outline-none focus:ring-2 focus:ring-black" required value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})}/>
+                               <input type="date" className="w-full p-3 bg-slate-50 rounded-xl font-medium outline-none focus:ring-2 focus:ring-black border border-slate-200" required value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})}/>
                             </div>
                             <div className="space-y-1">
                                <label className="text-xs font-bold text-slate-500 uppercase">Time</label>
-                               <input type="time" className="w-full p-3 bg-slate-50 rounded-xl font-medium outline-none focus:ring-2 focus:ring-black" required value={formData.time} onChange={e => setFormData({...formData, time: e.target.value})}/>
+                               <input type="time" className="w-full p-3 bg-slate-50 rounded-xl font-medium outline-none focus:ring-2 focus:ring-black border border-slate-200" required value={formData.time} onChange={e => setFormData({...formData, time: e.target.value})}/>
                             </div>
                          </div>
                          <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
                                <label className="text-xs font-bold text-slate-500 uppercase">Seats</label>
-                               <input type="number" min="1" max="6" className="w-full p-3 bg-slate-50 rounded-xl font-medium outline-none focus:ring-2 focus:ring-black" required value={formData.seats} onChange={e => setFormData({...formData, seats: parseInt(e.target.value) || 0})}/>
+                               <input type="number" min="1" max="6" className="w-full p-3 bg-slate-50 rounded-xl font-medium outline-none focus:ring-2 focus:ring-black border border-slate-200" required value={formData.seats} onChange={e => setFormData({...formData, seats: parseInt(e.target.value) || 0})}/>
                             </div>
                             <div className="space-y-1">
-                               <label className="text-xs font-bold text-slate-500 uppercase">Price (₦)</label>
-                               <input type="number" min="0" className="w-full p-3 bg-slate-50 rounded-xl font-medium outline-none focus:ring-2 focus:ring-black" required value={formData.price} onChange={e => setFormData({...formData, price: parseInt(e.target.value) || 0})}/>
+                               <label className="text-xs font-bold text-slate-500 uppercase">Price ({APP_CONFIG.currency})</label>
+                               <input type="number" min="0" className="w-full p-3 bg-slate-50 rounded-xl font-medium outline-none focus:ring-2 focus:ring-black border border-slate-200" required value={formData.price} onChange={e => setFormData({...formData, price: parseInt(e.target.value) || 0})}/>
                             </div>
                          </div>
                          <button type="submit" className="w-full bg-black text-white py-4 rounded-xl font-bold hover:bg-slate-800 transition mt-4 shadow-lg">Publish Trip</button>
@@ -221,8 +223,8 @@ export default function DriverDashboard() {
                             </div>
                          </div>
                          <div className="text-right">
-                            <div className="text-lg font-bold text-slate-900">₦{ride.price_per_seat}</div>
-                            <div className="text-xs text-green-600 font-bold bg-green-50 px-2 py-1 rounded-full inline-block mt-1">{ride.status}</div>
+                            <div className="text-lg font-bold text-slate-900">{APP_CONFIG.currency}{ride.price_per_seat}</div>
+                            <div className="text-xs text-green-600 font-bold bg-green-50 px-2 py-1 rounded-full inline-block mt-1 uppercase tracking-wide">{ride.status}</div>
                          </div>
                       </div>
                    ))
