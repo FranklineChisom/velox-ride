@@ -28,6 +28,32 @@ export interface Booking {
   seats_booked: number;
   status: 'confirmed' | 'cancelled';
   rides?: Ride; // For joining ride details
+  created_at: string;
+}
+
+export interface Wallet {
+  id: string;
+  user_id: string;
+  balance: number;
+  currency: string;
+}
+
+export interface Transaction {
+  id: string;
+  wallet_id: string;
+  amount: number;
+  type: 'credit' | 'debit';
+  description: string;
+  created_at: string;
+}
+
+export interface SavedPlace {
+  id: string;
+  user_id: string;
+  label: string;
+  address: string;
+  lat?: number;
+  lng?: number;
 }
 
 // Location & Maps
