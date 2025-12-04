@@ -3,13 +3,29 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
-import { BookingWithRide, Coordinates } from '@/types';
-import { Loader2, Phone, MessageSquare, ShieldCheck, MapPin, Navigation, Share2, AlertTriangle, ArrowLeft, Clock } from 'lucide-react'; // Added Clock
+import { BookingWithRide, Coordinates, Ride } from '@/types';
+import { Loader2, Phone, MessageSquare, ShieldCheck, MapPin, Navigation, Share2, AlertTriangle, ArrowLeft, Clock, User, X } from 'lucide-react';
 import { APP_CONFIG } from '@/lib/constants';
 import { format, addMinutes } from 'date-fns';
 import dynamic from 'next/dynamic';
-import { getRoute } from '@/lib/osm';
+import { getRoute, searchLocation } from '@/lib/osm';
 import { useToast } from '@/components/ui/ToastProvider';
+import ChatModal from '@/components/ChatModal';
+import Modal from '@/components/ui/Modal';
+
+// Extend the Ride type locally to include the new DB columns until types/index.ts is updated
+interface ExtendedRide extends Ride {
+  origin_lat?: number;
+  origin_lng?: number;
+  destination_lat?: number;
+  destination_lng?: number;
+  current_lat?: number;
+  current_lng?: number;
+}
+
+interface ExtendedBooking extends Omit<BookingWithRide, 'rides'> {
+  rides: (ExtendedRide & { profiles: any }) | null;
+}
 
 const LeafletMap = dynamic(() => import('@/components/Map'), { 
   ssr: false,
@@ -24,22 +40,32 @@ function TrackContent() {
   
   const bookingId = searchParams.get('booking_id');
   
-  const [booking, setBooking] = useState<BookingWithRide | null>(null);
+  const [booking, setBooking] = useState<ExtendedBooking | null>(null);
   const [loading, setLoading] = useState(true);
   const [route, setRoute] = useState<[number, number][] | undefined>(undefined);
   const [coords, setCoords] = useState<{ pickup?: Coordinates; dropoff?: Coordinates; driver?: Coordinates }>({});
-  const [eta, setEta] = useState<number>(15); // minutes
-  const [status, setStatus] = useState('Finding route...');
+  const [eta, setEta] = useState<number | null>(null);
+  const [status, setStatus] = useState('Locating ride...');
+  
+  // Interaction State
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [sosModalOpen, setSosModalOpen] = useState(false);
 
-  // Poll for booking updates (Real-time simulation)
   useEffect(() => {
     if (!bookingId) {
         router.push('/passenger/trips');
         return;
     }
 
-    const fetchBooking = async () => {
+    let realtimeChannel: any;
+
+    const fetchBookingAndSetupRealtime = async () => {
       try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if(user) setCurrentUser(user);
+
+        // 1. Fetch initial booking data
         const { data, error } = await supabase
           .from('bookings')
           .select(`
@@ -61,28 +87,72 @@ function TrackContent() {
           .single();
 
         if (error) throw error;
-        if (data) {
-            setBooking(data as unknown as BookingWithRide);
-            
-            // In a real app, these coords would come from the DB columns
-            // For now, I'm mocking coordinates based on Abuja/Lagos centers + random offset
-            // You should add lat/lng columns to your 'rides' table for real data
-            const mockPickup = { lat: 9.0765, lng: 7.3986 }; // Abuja Center
-            const mockDropoff = { lat: 9.0565, lng: 7.4986 };
-            // Simulate driver moving closer
-            const mockDriver = { lat: 9.0700 + (Math.random() * 0.005), lng: 7.3900 + (Math.random() * 0.005) }; 
+        
+        if (data && data.rides) {
+            const bookingData = data as unknown as ExtendedBooking;
+            const ride = bookingData.rides;
+            setBooking(bookingData);
+
+            // 2. Resolve Coordinates (DB preferred, fallback to Geocoding)
+            let pickupCoords: Coordinates | null = null;
+            let dropoffCoords: Coordinates | null = null;
+
+            if (ride?.origin_lat && ride?.origin_lng) {
+                pickupCoords = { lat: ride.origin_lat, lng: ride.origin_lng };
+            } else if (ride?.origin) {
+                pickupCoords = await searchLocation(ride.origin);
+            }
+
+            if (ride?.destination_lat && ride?.destination_lng) {
+                dropoffCoords = { lat: ride.destination_lat, lng: ride.destination_lng };
+            } else if (ride?.destination) {
+                dropoffCoords = await searchLocation(ride.destination);
+            }
+
+            const driverCoords = (ride?.current_lat && ride?.current_lng) 
+                ? { lat: ride.current_lat, lng: ride.current_lng } 
+                : undefined;
 
             setCoords({
-                pickup: mockPickup,
-                dropoff: mockDropoff,
-                driver: mockDriver
+                pickup: pickupCoords || undefined,
+                dropoff: dropoffCoords || undefined,
+                driver: driverCoords
             });
 
-            // Get route path
-            const path = await getRoute(mockPickup, mockDropoff);
-            if (path) setRoute(path);
-            
-            setStatus('Driver is on the way');
+            // 3. Calculate Route
+            if (pickupCoords && dropoffCoords) {
+                const path = await getRoute(pickupCoords, dropoffCoords);
+                if (path) setRoute(path);
+            }
+
+            // 4. Set Status
+            if (ride?.status === 'active') setStatus('Driver is on the way');
+            else if (ride?.status === 'scheduled') setStatus('Ride Scheduled');
+            else setStatus(ride?.status || 'Unknown');
+
+            // 5. Setup Realtime Subscription for Driver Location
+            if (ride?.id) {
+                realtimeChannel = supabase.channel(`ride-tracking-${ride.id}`)
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'UPDATE',
+                        schema: 'public',
+                        table: 'rides',
+                        filter: `id=eq.${ride.id}`
+                    },
+                    (payload: any) => {
+                        const newRide = payload.new as ExtendedRide;
+                        if (newRide.current_lat && newRide.current_lng) {
+                            setCoords(prev => ({
+                                ...prev,
+                                driver: { lat: newRide.current_lat!, lng: newRide.current_lng! }
+                            }));
+                        }
+                    }
+                )
+                .subscribe();
+            }
         }
       } catch (e) {
         console.error(e);
@@ -92,11 +162,51 @@ function TrackContent() {
       }
     };
 
-    fetchBooking();
-    // In production, use Supabase Realtime subscription here
-    const interval = setInterval(fetchBooking, 30000); 
-    return () => clearInterval(interval);
+    fetchBookingAndSetupRealtime();
+
+    return () => {
+        if (realtimeChannel) supabase.removeChannel(realtimeChannel);
+    };
   }, [bookingId, supabase, router, addToast]);
+
+  // --- Interaction Handlers ---
+
+  const handleCall = () => {
+    const phone = booking?.rides?.profiles?.phone_number;
+    if (phone) {
+        window.open(`tel:${phone}`, '_self');
+    } else {
+        addToast('Driver phone number not available', 'error');
+    }
+  };
+
+  const handleShare = async () => {
+    const shareData = {
+        title: 'Track my Veluxeride',
+        text: `I'm on my way from ${booking?.rides?.origin} to ${booking?.rides?.destination}. Track my ride here:`,
+        url: window.location.href,
+    };
+
+    if (navigator.share) {
+        try {
+            await navigator.share(shareData);
+            addToast('Ride link shared', 'success');
+        } catch (err) {
+            console.log('Error sharing:', err);
+        }
+    } else {
+        navigator.clipboard.writeText(window.location.href);
+        addToast('Link copied to clipboard', 'info');
+    }
+  };
+
+  const handleEmergency = () => {
+    // Log emergency in DB (optional logic could be added here)
+    addToast('SOS Alert Sent! Support team has been notified.', 'error');
+    // Simulate call to emergency services (e.g., 112 in Nigeria/EU or 911)
+    window.open('tel:112', '_self');
+    setSosModalOpen(false);
+  };
 
   if (loading) return <div className="h-screen w-full flex items-center justify-center bg-white"><Loader2 className="w-8 h-8 animate-spin text-black"/></div>;
   if (!booking || !booking.rides) return null;
@@ -106,7 +216,7 @@ function TrackContent() {
   return (
     <div className="h-screen w-full relative flex flex-col md:flex-row bg-slate-50">
       
-      {/* Map Layer (Mobile: Top, Desktop: Right) */}
+      {/* Map Layer */}
       <div className="flex-1 relative order-1 md:order-2 h-[50vh] md:h-auto">
          <div className="absolute top-6 left-6 z-[1000] md:hidden">
             <button onClick={() => router.back()} className="bg-white p-3 rounded-full shadow-lg text-slate-900 hover:scale-105 transition">
@@ -121,14 +231,13 @@ function TrackContent() {
          />
       </div>
 
-      {/* Info Panel (Mobile: Bottom Sheet, Desktop: Left Sidebar) */}
+      {/* Info Panel */}
       <div className="order-2 md:order-1 w-full md:w-[450px] bg-white shadow-2xl z-10 flex flex-col h-[50vh] md:h-screen animate-slide-up md:animate-none relative">
-         {/* Desktop Header */}
          <div className="hidden md:flex p-6 border-b border-slate-100 items-center justify-between">
             <button onClick={() => router.back()} className="p-2 -ml-2 rounded-full hover:bg-slate-50 text-slate-500 hover:text-black transition">
                 <ArrowLeft className="w-5 h-5"/>
             </button>
-            <h1 className="font-bold text-slate-900">Ride in Progress</h1>
+            <h1 className="font-bold text-slate-900">Ride Tracking</h1>
             <div className="w-9"></div>
          </div>
 
@@ -145,13 +254,15 @@ function TrackContent() {
                      </div>
                      <div className="bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-2">
                         <Clock className="w-4 h-4"/>
-                        <span className="font-bold text-sm">{eta} min</span>
+                        <span className="font-bold text-sm">{eta ? `${eta} min` : '--'}</span>
                      </div>
                   </div>
                   <div className="w-full bg-white/20 h-1 rounded-full overflow-hidden">
                      <div className="bg-white h-full w-[45%] animate-pulse"></div>
                   </div>
-                  <p className="text-right text-xs text-slate-400 mt-2">Arriving by {format(addMinutes(new Date(), eta), 'h:mm a')}</p>
+                  <p className="text-right text-xs text-slate-400 mt-2">
+                    {eta ? `Arriving by ${format(addMinutes(new Date(), eta), 'h:mm a')}` : 'Calculating arrival...'}
+                  </p>
                </div>
             </div>
 
@@ -172,17 +283,29 @@ function TrackContent() {
                      )}
                   </div>
                   <div className="flex-1">
-                     <h4 className="font-bold text-slate-900 text-lg">{driver?.full_name}</h4>
-                     <p className="text-sm text-slate-500 font-medium">{driver?.vehicle_model} • {driver?.vehicle_plate}</p>
+                     <h4 className="font-bold text-slate-900 text-lg">{driver?.full_name || 'Unassigned'}</h4>
+                     <p className="text-sm text-slate-500 font-medium">
+                        {driver ? `${driver.vehicle_model} • ${driver.vehicle_plate}` : 'Searching for driver...'}
+                     </p>
                   </div>
-                  <div className="flex gap-2">
-                     <button className="p-3 bg-white border border-slate-200 rounded-full hover:bg-slate-100 transition shadow-sm text-slate-900">
-                        <MessageSquare className="w-5 h-5"/>
-                     </button>
-                     <button className="p-3 bg-black text-white rounded-full hover:bg-slate-800 transition shadow-lg">
-                        <Phone className="w-5 h-5"/>
-                     </button>
-                  </div>
+                  {driver && (
+                      <div className="flex gap-2">
+                         <button 
+                           onClick={() => setIsChatOpen(true)}
+                           className="p-3 bg-white border border-slate-200 rounded-full hover:bg-slate-100 transition shadow-sm text-slate-900"
+                           title="Message Driver"
+                         >
+                            <MessageSquare className="w-5 h-5"/>
+                         </button>
+                         <button 
+                           onClick={handleCall}
+                           className="p-3 bg-black text-white rounded-full hover:bg-slate-800 transition shadow-lg"
+                           title="Call Driver"
+                         >
+                            <Phone className="w-5 h-5"/>
+                         </button>
+                      </div>
+                  )}
                </div>
             </div>
 
@@ -209,11 +332,17 @@ function TrackContent() {
 
             {/* Safety Actions */}
             <div className="grid grid-cols-2 gap-4">
-               <button className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 transition border border-slate-100">
+               <button 
+                 onClick={handleShare}
+                 className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 transition border border-slate-100"
+               >
                   <Share2 className="w-6 h-6 text-slate-900"/>
                   <span className="text-xs font-bold text-slate-600">Share Trip</span>
                </button>
-               <button className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-red-50 hover:bg-red-100 transition border border-red-100">
+               <button 
+                 onClick={() => setSosModalOpen(true)}
+                 className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-red-50 hover:bg-red-100 transition border border-red-100"
+               >
                   <AlertTriangle className="w-6 h-6 text-red-600"/>
                   <span className="text-xs font-bold text-red-600">Emergency</span>
                </button>
@@ -221,6 +350,45 @@ function TrackContent() {
 
          </div>
       </div>
+
+      {/* Chat Modal */}
+      {isChatOpen && currentUser && bookingId && (
+        <ChatModal 
+          bookingId={bookingId}
+          driverName={driver?.full_name || 'Driver'}
+          currentUserId={currentUser.id}
+          onClose={() => setIsChatOpen(false)}
+        />
+      )}
+
+      {/* SOS Confirmation Modal */}
+      <Modal isOpen={sosModalOpen} onClose={() => setSosModalOpen(false)} title="Emergency SOS">
+        <div className="space-y-6 text-center">
+          <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto">
+            <AlertTriangle className="w-10 h-10 text-red-600" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-slate-900 mb-2">Are you in danger?</h3>
+            <p className="text-slate-600 text-sm">
+              This will trigger an SOS alert to our support team and open the dialer for local emergency services (112).
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <button 
+              onClick={() => setSosModalOpen(false)} 
+              className="flex-1 py-3 border border-slate-200 rounded-xl font-bold hover:bg-slate-50 transition"
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={handleEmergency}
+              className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition"
+            >
+              CALL SOS
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
