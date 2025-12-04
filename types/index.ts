@@ -5,14 +5,39 @@ export interface Profile {
   email: string;
   full_name: string;
   phone_number: string | null;
+  address?: string; // New field
   role: UserRole;
   is_verified: boolean;
   avatar_url?: string;
+  preferences?: {
+    email_updates: boolean;
+    sms_notifications: boolean;
+    security_alerts: boolean;
+  };
   license_number?: string;
   vehicle_model?: string;
   vehicle_year?: string;
   vehicle_plate?: string;
   created_at: string;
+}
+
+export interface EmergencyContact {
+  id: string;
+  user_id: string;
+  name: string;
+  phone_number: string;
+  relationship: string;
+}
+
+export interface Review {
+  id: string;
+  ride_id?: string;
+  reviewer_id: string;
+  reviewee_id: string;
+  rating: number;
+  comment: string;
+  created_at: string;
+  profiles?: Profile; // reviewer details
 }
 
 export interface Ride {
@@ -38,7 +63,7 @@ export interface Booking {
   status: 'confirmed' | 'cancelled' | 'pending_payment';
   payment_method: 'card' | 'wallet' | 'cash';
   payment_status: 'paid' | 'pending';
-  payment_reference?: string; // Paystack reference
+  payment_reference?: string;
   created_at: string;
 }
 
@@ -59,7 +84,7 @@ export interface Transaction {
   amount: number;
   type: 'credit' | 'debit';
   description: string;
-  reference?: string; // Paystack reference
+  reference?: string;
   status: 'success' | 'failed' | 'pending';
   created_at: string;
 }

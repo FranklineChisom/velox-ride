@@ -4,18 +4,19 @@ export const APP_CONFIG = {
   name: 'Veluxeride',
   currency: '₦',
   defaultCenter: { lat: 9.0765, lng: 7.3986 }, // Abuja
-  paystackPublicKey: 'pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', // Replace with your actual key
+  // Safely access env var or fall back to empty string
+  paystackPublicKey: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || '', 
+};
+
+export const LINKS = {
+  appStore: "https://apps.apple.com/us/app/Veluxeride/id123456789",
+  playStore: "https://play.google.com/store/apps/details?id=com.Veluxeride.app",
 };
 
 export const PAYMENT_METHODS = {
   CARD: 'card',
   WALLET: 'wallet',
   CASH: 'cash',
-};
-
-export const LINKS = {
-  appStore: "https://apps.apple.com/us/app/Veluxeride/id123456789",
-  playStore: "https://play.google.com/store/apps/details?id=com.Veluxeride.app",
 };
 
 export const IMAGES = {
@@ -93,7 +94,7 @@ export const STAFF_NAV = [
 // Manager Nav
 export const MANAGER_NAV = [
   { label: 'Dashboard', href: '/manager', icon: 'LayoutDashboard' },
-  { label: 'User Management', href: '/manager', icon: 'Users' }, // Single page for demo
+  { label: 'User Management', href: '/manager', icon: 'Users' },
   { label: 'Ride Oversight', href: '/manager/rides', icon: 'Activity' },
 ];
 

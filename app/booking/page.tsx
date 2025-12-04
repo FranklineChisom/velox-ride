@@ -24,7 +24,7 @@ export default function BookingPage() {
   const [ride, setRide] = useState<RideWithDriver | null>(null);
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [loading, setLoading] = useState(true);
-  const [step, setStep] = useState(1); // 1: Review, 2: Payment, 3: Success
+  const [step, setStep] = useState(1);
   const [seats, setSeats] = useState(1);
   const [processing, setProcessing] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>(PAYMENT_METHODS.CARD);
@@ -66,6 +66,12 @@ export default function BookingPage() {
   const totalFare = ride ? ride.price_per_seat * seats : 0;
 
   const handlePaystackPayment = () => {
+    if (typeof window.PaystackPop === 'undefined') {
+        alert("Payment system is loading. Please try again in a moment.");
+        setProcessing(false);
+        return;
+    }
+
     const paystack = new window.PaystackPop();
     paystack.newTransaction({
       key: APP_CONFIG.paystackPublicKey,
@@ -83,40 +89,29 @@ export default function BookingPage() {
   };
 
   const handleWalletPayment = async () => {
-    if (!wallet || wallet.balance < totalFare) {
-      alert('Insufficient wallet balance');
+    if (!wallet || Number(wallet.balance) < totalFare) {
+      alert('Insufficient wallet balance. Please fund your wallet.');
       setProcessing(false);
       return;
     }
-    // Deduct balance logic would typically happen securely on the server via RLS or Edge Function
-    // For this demo, we assume the backend handles the deduction upon booking insertion if method is wallet
+    
+    // Debit Wallet
+    await supabase.from('wallets').update({ balance: Number(wallet.balance) - totalFare }).eq('user_id', wallet.user_id);
+    await supabase.from('transactions').insert({
+        wallet_id: wallet.id,
+        amount: totalFare,
+        type: 'debit',
+        description: `Ride Payment: ${ride?.origin} to ${ride?.destination}`,
+        status: 'success',
+        reference: `WAL-${Date.now()}`
+    });
+
     completeBooking('paid', `WAL-${Date.now()}`);
   };
 
   const completeBooking = async (status: 'paid' | 'pending', reference?: string) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user || !ride) return;
-
-    // Check wallet balance specifically if that method was chosen
-    if (paymentMethod === PAYMENT_METHODS.WALLET) {
-       const { data: currentWallet } = await supabase.from('wallets').select('balance').eq('user_id', user.id).single();
-       if (!currentWallet || currentWallet.balance < totalFare) {
-           alert('Insufficient funds. Please fund your wallet.');
-           setProcessing(false);
-           return;
-       }
-       
-       // Debit Wallet (Optimistic update here, real logic should be DB trigger or secure API)
-       await supabase.from('wallets').update({ balance: currentWallet.balance - totalFare }).eq('user_id', user.id);
-       await supabase.from('transactions').insert({
-           wallet_id: wallet?.id,
-           amount: totalFare,
-           type: 'debit',
-           description: `Ride Payment: ${ride.origin} to ${ride.destination}`,
-           status: 'success',
-           reference: reference
-       });
-    }
 
     const { error } = await supabase.from('bookings').insert({
       ride_id: ride.id,
@@ -168,7 +163,7 @@ export default function BookingPage() {
 
         {step === 1 && (
           <div className="space-y-6 animate-fade-in">
-            {/* Ride Details (Same as before) */}
+            {/* Ride Details */}
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
                <div className="flex justify-between items-start mb-6">
                   <div>
@@ -252,7 +247,7 @@ export default function BookingPage() {
                          <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-full flex items-center justify-center"><WalletIcon className="w-5 h-5"/></div>
                          <div>
                             <span className="font-bold block">My Wallet</span>
-                            <span className="text-xs text-slate-500">Balance: {APP_CONFIG.currency}{wallet?.balance.toLocaleString() || '0.00'}</span>
+                            <span className="text-xs text-slate-500">Balance: {APP_CONFIG.currency}{Number(wallet?.balance || 0).toLocaleString()}</span>
                          </div>
                       </div>
                       {paymentMethod === PAYMENT_METHODS.WALLET && <div className="w-5 h-5 bg-black rounded-full flex items-center justify-center"><div className="w-2 h-2 bg-white rounded-full"></div></div>}
