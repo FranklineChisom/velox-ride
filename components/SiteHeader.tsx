@@ -1,13 +1,59 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { Menu, X } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { Menu, X, User, LogOut } from 'lucide-react';
 import { APP_CONFIG, NAV_LINKS } from '@/lib/constants';
+import { createClient } from '@/lib/supabase';
+import { UserRole } from '@/types';
 
 export default function SiteHeader() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [role, setRole] = useState<UserRole>('passenger');
   const pathname = usePathname();
+  const router = useRouter();
+  const supabase = createClient();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUser(user);
+        setRole(user.user_metadata?.role as UserRole || 'passenger');
+      }
+    };
+    checkAuth();
+
+    // Listen for auth changes to update header dynamically
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUser(session.user);
+        setRole(session.user.user_metadata?.role as UserRole || 'passenger');
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [supabase]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    router.push('/');
+    router.refresh();
+  };
+
+  const getDashboardLink = () => {
+    switch(role) {
+      case 'driver': return '/driver';
+      case 'superadmin': return '/admin';
+      case 'manager': return '/manager';
+      case 'employee': return '/staff';
+      default: return '/passenger';
+    }
+  };
 
   const isActive = (path: string) => pathname === path;
 
@@ -34,10 +80,29 @@ export default function SiteHeader() {
         </div>
 
         <div className="hidden md:flex items-center gap-4">
-            <Link href="/auth?role=passenger" className="text-sm font-bold text-slate-900 hover:text-slate-600 transition">Log in</Link>
-            <Link href="/auth?role=passenger" className="bg-black text-white px-6 py-3 rounded-full text-sm font-bold hover:bg-slate-800 transition shadow-lg shadow-black/10 transform hover:-translate-y-0.5">
-              Sign up
-            </Link>
+            {user ? (
+              <div className="flex items-center gap-4">
+                <Link 
+                  href={getDashboardLink()} 
+                  className="flex items-center gap-2 text-sm font-bold text-slate-900 hover:text-slate-600 transition"
+                >
+                  <User className="w-4 h-4" /> Dashboard
+                </Link>
+                <button 
+                  onClick={handleLogout}
+                  className="bg-slate-100 text-slate-900 px-5 py-2.5 rounded-full text-sm font-bold hover:bg-slate-200 transition flex items-center gap-2"
+                >
+                  <LogOut className="w-4 h-4" /> Sign Out
+                </button>
+              </div>
+            ) : (
+              <>
+                <Link href="/auth?role=passenger" className="text-sm font-bold text-slate-900 hover:text-slate-600 transition">Log in</Link>
+                <Link href="/auth?role=passenger" className="bg-black text-white px-6 py-3 rounded-full text-sm font-bold hover:bg-slate-800 transition shadow-lg shadow-black/10 transform hover:-translate-y-0.5">
+                  Sign up
+                </Link>
+              </>
+            )}
         </div>
 
         <button className="md:hidden text-slate-900" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
@@ -61,8 +126,22 @@ export default function SiteHeader() {
             <Link href="/about" className="text-lg font-medium text-slate-900" onClick={() => setMobileMenuOpen(false)}>About</Link>
             
             <div className="h-px bg-slate-100 w-full my-2"></div>
-            <Link href="/auth?role=passenger" className="w-full bg-slate-100 text-slate-900 py-3.5 rounded-lg text-center font-bold" onClick={() => setMobileMenuOpen(false)}>Log In</Link>
-            <Link href="/auth?role=passenger" className="w-full bg-black text-white py-3.5 rounded-lg text-center font-bold" onClick={() => setMobileMenuOpen(false)}>Sign Up</Link>
+            
+            {user ? (
+              <>
+                <Link href={getDashboardLink()} className="w-full bg-black text-white py-3.5 rounded-lg text-center font-bold flex items-center justify-center gap-2" onClick={() => setMobileMenuOpen(false)}>
+                  <User className="w-5 h-5"/> Dashboard
+                </Link>
+                <button onClick={() => { handleLogout(); setMobileMenuOpen(false); }} className="w-full bg-slate-100 text-slate-900 py-3.5 rounded-lg text-center font-bold flex items-center justify-center gap-2">
+                  <LogOut className="w-5 h-5"/> Sign Out
+                </button>
+              </>
+            ) : (
+              <>
+                <Link href="/auth?role=passenger" className="w-full bg-slate-100 text-slate-900 py-3.5 rounded-lg text-center font-bold" onClick={() => setMobileMenuOpen(false)}>Log In</Link>
+                <Link href="/auth?role=passenger" className="w-full bg-black text-white py-3.5 rounded-lg text-center font-bold" onClick={() => setMobileMenuOpen(false)}>Sign Up</Link>
+              </>
+            )}
         </div>
       )}
     </nav>

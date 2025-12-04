@@ -7,7 +7,7 @@ import L from 'leaflet';
 import { APP_CONFIG, IMAGES } from '@/lib/constants';
 import { Coordinates } from '@/types';
 
-// Fix for default marker icons
+// Standard Marker
 const customIcon = new L.Icon({
   iconUrl: IMAGES.mapMarkerIcon,
   iconRetinaUrl: IMAGES.mapMarkerIconRetina,
@@ -17,9 +17,20 @@ const customIcon = new L.Icon({
   popupAnchor: [1, -34],
 });
 
+// Driver/Car Marker (Using a distinct visual if available, otherwise reuse with distinct popup)
+// For a car icon, we'd typically import a specific asset. Using a slightly modified standard icon for now.
+const driverIcon = new L.Icon({
+  iconUrl: 'https://cdn-icons-png.flaticon.com/512/75/75780.png', // Simple Car Icon
+  iconSize: [40, 40],
+  iconAnchor: [20, 20],
+  popupAnchor: [0, -10],
+  className: 'driver-marker'
+});
+
 interface MapProps {
   pickup?: Coordinates;
   dropoff?: Coordinates;
+  driverLocation?: Coordinates; // New Prop
   routeCoordinates?: [number, number][];
   onPickupSelect?: (coords: Coordinates) => void;
   onDropoffSelect?: (coords: Coordinates) => void;
@@ -37,34 +48,48 @@ function LocationSelector({ onSelect }: { onSelect: (coords: Coordinates) => voi
   return null;
 }
 
-function MapUpdater({ pickup, dropoff }: { pickup?: Coordinates; dropoff?: Coordinates }) {
+function MapUpdater({ pickup, dropoff, driverLocation, routeCoordinates }: { pickup?: Coordinates; dropoff?: Coordinates; driverLocation?: Coordinates; routeCoordinates?: [number, number][] }) {
   const map = useMap();
 
   useEffect(() => {
     if (!map) return;
 
-    if (pickup && dropoff) {
-      // Valid check before bounds
-      if (pickup.lat && pickup.lng && dropoff.lat && dropoff.lng) {
-        const bounds = L.latLngBounds([
-          [pickup.lat, pickup.lng],
-          [dropoff.lat, dropoff.lng],
-        ]);
-        if (bounds.isValid()) {
-            map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
-        }
+    const points: L.LatLngExpression[] = [];
+    if (pickup && pickup.lat) points.push([pickup.lat, pickup.lng]);
+    if (dropoff && dropoff.lat) points.push([dropoff.lat, dropoff.lng]);
+    if (driverLocation && driverLocation.lat) points.push([driverLocation.lat, driverLocation.lng]);
+
+    // 1. Priority: Fit Route if available
+    if (routeCoordinates && routeCoordinates.length > 0) {
+      const bounds = L.latLngBounds(routeCoordinates);
+      // Extend bounds to include driver if visible
+      if (driverLocation) bounds.extend([driverLocation.lat, driverLocation.lng]);
+      
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [80, 80], animate: true });
       }
-    } else if (pickup && pickup.lat && pickup.lng) {
-      map.flyTo([pickup.lat, pickup.lng], 15, { animate: true, duration: 1 });
-    } else if (dropoff && dropoff.lat && dropoff.lng) {
-      map.flyTo([dropoff.lat, dropoff.lng], 15, { animate: true, duration: 1 });
+      return;
     }
-  }, [pickup, dropoff, map]);
+
+    // 2. Fit points bounds
+    if (points.length > 1) {
+      const bounds = L.latLngBounds(points);
+      if (bounds.isValid()) {
+          map.fitBounds(bounds, { padding: [80, 80], maxZoom: 15, animate: true });
+      }
+      return;
+    } 
+    
+    // 3. Fly to single point
+    if (points.length === 1) {
+      map.flyTo(points[0] as L.LatLngTuple, 16, { animate: true, duration: 1.5 });
+    }
+  }, [pickup, dropoff, driverLocation, routeCoordinates, map]);
 
   return null;
 }
 
-export default function Map({ pickup, dropoff, routeCoordinates, onPickupSelect, onDropoffSelect, selectionMode }: MapProps) {
+export default function Map({ pickup, dropoff, driverLocation, routeCoordinates, onPickupSelect, onDropoffSelect, selectionMode }: MapProps) {
   return (
     <div className="h-full w-full relative bg-slate-50 z-0">
       <MapContainer
@@ -84,13 +109,19 @@ export default function Map({ pickup, dropoff, routeCoordinates, onPickupSelect,
 
         {pickup && pickup.lat && (
           <Marker position={[pickup.lat, pickup.lng]} icon={customIcon}>
-            <Popup>Pickup</Popup>
+            <Popup>Pickup Point</Popup>
           </Marker>
         )}
 
         {dropoff && dropoff.lat && (
           <Marker position={[dropoff.lat, dropoff.lng]} icon={customIcon}>
-            <Popup>Dropoff</Popup>
+            <Popup>Destination</Popup>
+          </Marker>
+        )}
+
+        {driverLocation && driverLocation.lat && (
+          <Marker position={[driverLocation.lat, driverLocation.lng]} icon={driverIcon} zIndexOffset={1000}>
+            <Popup>Driver</Popup>
           </Marker>
         )}
 
@@ -98,7 +129,7 @@ export default function Map({ pickup, dropoff, routeCoordinates, onPickupSelect,
           <Polyline positions={routeCoordinates} color="#000000" weight={4} opacity={0.7} />
         )}
 
-        <MapUpdater pickup={pickup} dropoff={dropoff} />
+        <MapUpdater pickup={pickup} dropoff={dropoff} driverLocation={driverLocation} routeCoordinates={routeCoordinates} />
       </MapContainer>
     </div>
   );

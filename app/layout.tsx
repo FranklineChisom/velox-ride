@@ -2,6 +2,7 @@ import './globals.css';
 import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans } from 'next/font/google';
 import ClientLayoutWrapper from '@/components/ClientLayoutWrapper';
+import { ToastProvider } from '@/components/ui/ToastProvider';
 
 const jakarta = Plus_Jakarta_Sans({ 
   subsets: ['latin'],
@@ -21,10 +22,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning className={jakarta.variable}>
-      <body className={`${jakarta.className} antialiased bg-white text-slate-900 selection:bg-black selection:text-white`}>
-        <ClientLayoutWrapper>
-          {children}
-        </ClientLayoutWrapper>
+      <body className={`${jakarta.className} antialiased bg-slate-50 text-slate-900 selection:bg-black selection:text-white`}>
+        <ToastProvider>
+          <ClientLayoutWrapper>
+            {children}
+          </ClientLayoutWrapper>
+        </ToastProvider>
       </body>
     </html>
   );

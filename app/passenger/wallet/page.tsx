@@ -1,11 +1,13 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { CreditCard, Plus, ArrowDownLeft, ArrowUpRight, Wallet, Loader2, AlertTriangle } from 'lucide-react';
+import { CreditCard, Plus, ArrowDownLeft, ArrowUpRight, Wallet, Loader2, AlertTriangle, AlertCircle } from 'lucide-react';
 import { APP_CONFIG } from '@/lib/constants';
 import { createClient } from '@/lib/supabase';
 import { Wallet as WalletType, Transaction } from '@/types';
 import { format } from 'date-fns';
 import Script from 'next/script';
+import { useToast } from '@/components/ui/ToastProvider';
+import Modal from '@/components/ui/Modal';
 
 declare global {
   interface Window {
@@ -15,10 +17,17 @@ declare global {
 
 export default function WalletPage() {
   const supabase = createClient();
+  const { addToast } = useToast();
+  
   const [wallet, setWallet] = useState<WalletType | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState('');
+  
+  // Funding Modal State
+  const [fundModalOpen, setFundModalOpen] = useState(false);
+  const [fundAmount, setFundAmount] = useState('');
+  const [isFunding, setIsFunding] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -41,65 +50,59 @@ export default function WalletPage() {
     fetchData();
   }, [supabase]);
 
-  const handleFundWallet = () => {
-    // 1. Env Var Check
+  const initPaystack = () => {
     if (!APP_CONFIG.paystackPublicKey) {
-        alert("Configuration Error: Paystack Public Key is missing. Please contact support.");
-        console.error("Missing NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY in env variables.");
-        return;
+      addToast('System configuration error: Missing API Key', 'error');
+      return;
     }
-
-    if (!userEmail) {
-        alert("Please sign in to fund your wallet.");
-        return;
-    }
-
-    // 2. Script Load Check
+    if (!userEmail) return;
+    
     if (typeof window.PaystackPop === 'undefined') {
-        alert("Payment system is initializing. Please check your internet connection and try again.");
-        return;
+      addToast('Payment system still initializing...', 'info');
+      return;
     }
 
-    const amountStr = prompt("Enter amount to fund (NGN):");
-    if (!amountStr || isNaN(Number(amountStr)) || Number(amountStr) <= 0) return;
-    const amount = Number(amountStr);
+    const amount = Number(fundAmount);
+    if (isNaN(amount) || amount <= 0) {
+      addToast('Please enter a valid amount', 'error');
+      return;
+    }
 
+    setIsFunding(true);
     const paystack = new window.PaystackPop();
+    
     paystack.newTransaction({
       key: APP_CONFIG.paystackPublicKey,
       email: userEmail,
-      amount: amount * 100, // Paystack expects kobo
+      amount: amount * 100, // Kobo
       currency: 'NGN',
       onSuccess: async (transaction: any) => {
         if (!wallet) return;
         
-        // Optimistic Update
+        // Optimistic update
         const newBalance = Number(wallet.balance) + amount;
-        
-        const { error: updateError } = await supabase
-            .from('wallets')
-            .update({ balance: newBalance })
-            .eq('id', wallet.id);
+        setWallet({ ...wallet, balance: newBalance });
+        setFundModalOpen(false);
+        setIsFunding(false);
+        addToast(`Successfully funded ₦${amount.toLocaleString()}`, 'success');
 
-        if (updateError) {
-            alert(`Error updating balance: ${updateError.message}`);
-            return;
-        }
+        // Database Update
+        await supabase.from('wallets').update({ balance: newBalance }).eq('id', wallet.id);
         
-        await supabase.from('transactions').insert({
+        const { data: newTx } = await supabase.from('transactions').insert({
             wallet_id: wallet.id,
             amount: amount,
             type: 'credit',
             description: 'Wallet Funding via Paystack',
             status: 'success',
             reference: transaction.reference
-        });
+        }).select().single();
 
-        alert(`Success! Funded NGN ${amount}.`);
-        window.location.reload();
+        if (newTx) setTransactions([newTx, ...transactions]);
       },
       onCancel: () => {
-        alert('Transaction was cancelled.');
+        setIsFunding(false);
+        addToast('Transaction cancelled', 'info');
       }
     });
   };
@@ -110,7 +113,6 @@ export default function WalletPage() {
       
       <h1 className="text-3xl font-bold text-slate-900 mb-8">Wallet</h1>
 
-      {/* Dev Warning for missing Key */}
       {!APP_CONFIG.paystackPublicKey && (
           <div className="bg-red-50 border border-red-200 p-4 rounded-xl mb-6 flex items-center gap-3 text-red-700 font-bold">
               <AlertTriangle className="w-5 h-5" />
@@ -119,13 +121,14 @@ export default function WalletPage() {
       )}
 
       <div className="grid md:grid-cols-3 gap-8 mb-10">
+        {/* Balance Card */}
         <div className="md:col-span-2 bg-black text-white p-8 rounded-[2rem] shadow-xl relative overflow-hidden">
            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-16 -mt-16 blur-3xl"></div>
            <div className="relative z-10 flex flex-col h-full justify-between min-h-[200px]">
               <div className="flex justify-between items-start">
                  <div>
                     <p className="text-slate-400 text-sm font-medium mb-1">Available Balance</p>
-                    <h2 className="text-5xl font-bold">
+                    <h2 className="text-5xl font-bold tracking-tight">
                       {loading ? '...' : `${wallet?.currency || '₦'}${Number(wallet?.balance || 0).toLocaleString()}`}
                     </h2>
                  </div>
@@ -134,20 +137,25 @@ export default function WalletPage() {
                  </div>
               </div>
               <div className="flex gap-4 mt-8">
-                 <button onClick={handleFundWallet} className="flex-1 bg-white text-black py-3 rounded-xl font-bold hover:bg-slate-200 transition flex items-center justify-center gap-2">
-                    <Plus className="w-4 h-4" /> Fund with Paystack
+                 <button 
+                   onClick={() => setFundModalOpen(true)}
+                   className="flex-1 bg-white text-black py-3 rounded-xl font-bold hover:bg-slate-200 transition flex items-center justify-center gap-2"
+                 >
+                    <Plus className="w-4 h-4" /> Fund Wallet
                  </button>
               </div>
            </div>
         </div>
 
+        {/* Info Card */}
         <div className="bg-white border border-slate-200 p-6 rounded-[2rem] flex flex-col justify-center text-center">
            <CreditCard className="w-12 h-12 text-slate-300 mx-auto mb-4"/>
            <p className="text-slate-500 mb-4">Secure payments powered by Paystack</p>
-           <button onClick={handleFundWallet} className="text-sm font-bold text-black underline hover:text-slate-600">Add Funds Now</button>
+           <button onClick={() => setFundModalOpen(true)} className="text-sm font-bold text-black underline hover:text-slate-600">Add Funds Now</button>
         </div>
       </div>
 
+      {/* Transactions List */}
       <div>
          <h3 className="font-bold text-xl text-slate-900 mb-6">Recent Transactions</h3>
          <div className="bg-white border border-slate-100 rounded-3xl overflow-hidden min-h-[200px]">
@@ -175,6 +183,36 @@ export default function WalletPage() {
             )}
          </div>
       </div>
+
+      {/* Funding Modal */}
+      <Modal isOpen={fundModalOpen} onClose={() => setFundModalOpen(false)} title="Fund Wallet">
+        <div className="space-y-6">
+          <div className="bg-slate-50 p-4 rounded-xl flex gap-3 border border-slate-100">
+            <AlertCircle className="w-5 h-5 text-slate-400"/>
+            <p className="text-sm text-slate-600">Payments are processed securely via Paystack. Funds are added immediately.</p>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">Amount (₦)</label>
+            <input 
+              type="number" 
+              className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl text-lg font-bold outline-none focus:border-black transition"
+              placeholder="e.g. 5000"
+              value={fundAmount}
+              onChange={(e) => setFundAmount(e.target.value)}
+              min="100"
+            />
+          </div>
+
+          <button 
+            onClick={initPaystack}
+            disabled={isFunding || !fundAmount}
+            className="w-full bg-black text-white py-4 rounded-xl font-bold text-lg hover:bg-slate-900 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {isFunding ? <Loader2 className="animate-spin"/> : 'Proceed to Pay'}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

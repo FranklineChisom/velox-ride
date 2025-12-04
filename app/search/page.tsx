@@ -3,11 +3,13 @@
 import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
-import { getRoute } from '@/lib/osm';
+import { getRoute, reverseGeocode } from '@/lib/osm';
 import { RideWithDriver, Suggestion, SearchHistoryItem, Coordinates } from '@/types';
 import dynamic from 'next/dynamic';
-import { MapPin, Loader2, User, ArrowLeft, Clock, Car, Navigation2, History, X, Search } from 'lucide-react';
+// Added CreditCard to imports
+import { MapPin, Loader2, User, ArrowLeft, Clock, Car, Navigation2, History, X, Search, CreditCard } from 'lucide-react';
 import { format } from 'date-fns';
+import { useToast } from '@/components/ui/ToastProvider';
 
 const LeafletMap = dynamic(() => import('@/components/Map'), { 
   ssr: false,
@@ -18,6 +20,7 @@ function SearchContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const supabase = createClient();
+  const { addToast } = useToast();
 
   const [query, setQuery] = useState({
     origin: searchParams.get('origin') || '',
@@ -37,14 +40,36 @@ function SearchContent() {
   const [recentSearches, setRecentSearches] = useState<SearchHistoryItem[]>([]);
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
+  // Initialize Search coordinates if names are provided in URL
   useEffect(() => {
+    const initCoords = async () => {
+      const pUrl = searchParams.get('origin');
+      const dUrl = searchParams.get('destination');
+      if (pUrl && !coords.pickup) {
+         try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(pUrl)}&limit=1`);
+            const data = await res.json();
+            if(data[0]) setCoords(prev => ({...prev, pickup: { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }}));
+         } catch(e) {}
+      }
+      if (dUrl && !coords.dropoff) {
+         try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(dUrl)}&limit=1`);
+            const data = await res.json();
+            if(data[0]) setCoords(prev => ({...prev, dropoff: { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }}));
+         } catch(e) {}
+      }
+    };
+    initCoords();
     performSearch(false);
     fetchRecentSearches();
   }, []);
 
   useEffect(() => {
     if (coords.pickup && coords.dropoff) {
-      updateRoute();
+      getRoute(coords.pickup, coords.dropoff).then(path => {
+        if(path) setRoute(path);
+      });
     }
   }, [coords.pickup, coords.dropoff]);
 
@@ -53,12 +78,6 @@ function SearchContent() {
     if (!user) return;
     const { data } = await supabase.from('search_history').select('*').order('created_at', { ascending: false }).limit(5);
     if (data) setRecentSearches(data);
-  };
-
-  const updateRoute = async () => {
-    if (!coords.pickup || !coords.dropoff) return;
-    const path = await getRoute(coords.pickup, coords.dropoff);
-    if (path) setRoute(path);
   };
 
   const fetchSuggestions = async (input: string) => {
@@ -81,6 +100,11 @@ function SearchContent() {
   const handleInputChange = (field: 'origin' | 'destination', value: string) => {
     setQuery(prev => ({ ...prev, [field]: value }));
     setActiveField(field);
+    // Reset specific coordinate when typing
+    if (field === 'origin') setCoords(prev => ({ ...prev, pickup: undefined }));
+    else setCoords(prev => ({ ...prev, dropoff: undefined }));
+    setRoute(undefined);
+
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => { fetchSuggestions(value); }, 500);
   };
@@ -149,11 +173,9 @@ function SearchContent() {
             setFilteredRides(filtered);
         }
         
-        if (shouldSaveHistory && coords.pickup && coords.dropoff) {
-            // Save history...
-        }
     } catch (err: any) {
         console.error('SEARCH ERROR:', err);
+        addToast("Failed to search rides", 'error');
     } finally {
         setLoading(false);
     }
@@ -161,20 +183,28 @@ function SearchContent() {
 
   const handleBookRedirect = () => {
     if(!selectedRide) return;
-    
-    // Redirect to the new booking flow page
     router.push(`/booking?ride_id=${selectedRide}`);
   };
 
-  const handleMapSelect = (c: Coordinates) => {
-      if(mapMode === 'pickup') {
+  const handleMapSelect = async (c: Coordinates) => {
+      const currentMode = mapMode;
+      setMapMode(null);
+      if(!currentMode) return;
+
+      if(currentMode === 'pickup') {
           setCoords(prev => ({...prev, pickup: c}));
-          setQuery(prev => ({...prev, origin: 'Pinned Location'}));
+          setQuery(prev => ({...prev, origin: 'Fetching...'}));
       } else if (mapMode === 'dropoff') {
           setCoords(prev => ({...prev, dropoff: c}));
-          setQuery(prev => ({...prev, destination: 'Pinned Location'}));
+          setQuery(prev => ({...prev, destination: 'Fetching...'}));
       }
-      setMapMode(null);
+
+      try {
+        const address = await reverseGeocode(c.lat, c.lng);
+        setQuery(prev => ({...prev, [currentMode === 'pickup' ? 'origin' : 'destination']: address}));
+      } catch (e) {
+        setQuery(prev => ({...prev, [currentMode === 'pickup' ? 'origin' : 'destination']: "Pinned Location"}));
+      }
   }
 
   return (
@@ -340,16 +370,12 @@ function SearchContent() {
 
       {mapMode && (
         <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[100] bg-black text-white px-6 py-2.5 rounded-full font-bold shadow-xl animate-bounce flex items-center gap-3">
-          <span>Tap map to set {mapMode} location</span>
+          <span>Tap map to set {mapMode === 'pickup' ? 'Pickup' : 'Dropoff'}</span>
           <button onClick={() => setMapMode(null)} className="bg-white/20 rounded-full p-1 hover:bg-white/30"><X className="w-3 h-3"/></button>
         </div>
       )}
     </div>
   );
-}
-
-function CreditCard(props: React.SVGProps<SVGSVGElement>) {
-  return <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
 }
 
 export default function SearchPage() {

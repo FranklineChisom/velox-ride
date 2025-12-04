@@ -5,7 +5,7 @@ export interface Profile {
   email: string;
   full_name: string;
   phone_number: string | null;
-  address?: string; // New field
+  address?: string;
   role: UserRole;
   is_verified: boolean;
   avatar_url?: string;
@@ -62,13 +62,13 @@ export interface Booking {
   seats_booked: number;
   status: 'confirmed' | 'cancelled' | 'pending_payment';
   payment_method: 'card' | 'wallet' | 'cash';
-  payment_status: 'paid' | 'pending';
+  payment_status: 'paid' | 'pending' | 'failed';
   payment_reference?: string;
   created_at: string;
 }
 
 export interface BookingWithRide extends Booking {
-  rides: Ride | null;
+  rides: (Ride & { profiles: Profile }) | null;
 }
 
 export interface Wallet {
@@ -119,4 +119,13 @@ export interface SearchHistoryItem {
   destination_lat?: number;
   destination_lng?: number;
   created_at?: string;
+}
+
+export interface SupportTicket {
+  id: string;
+  user_id: string;
+  subject: string;
+  message: string;
+  status: 'open' | 'in_progress' | 'resolved' | 'closed';
+  created_at: string;
 }
