@@ -172,6 +172,12 @@ function TrackContent() {
                         
                         // Check for completion
                         if (newRide.status === 'completed') {
+                            // Update local booking state to reflect completion
+                            setBooking(prev => prev ? {
+                                ...prev,
+                                rides: prev.rides ? { ...prev.rides, status: 'completed' } : null
+                            } : null);
+                            
                             addToast('Trip completed!', 'success');
                             setReviewModalOpen(true);
                         }
@@ -208,7 +214,7 @@ function TrackContent() {
         if (realtimeChannel) supabase.removeChannel(realtimeChannel);
         if (chatChannel) supabase.removeChannel(chatChannel);
     };
-  }, [bookingId, supabase, router, addToast, isChatOpen, currentUser]);
+  }, [bookingId, supabase, router, addToast, isChatOpen, currentUser]); // Added dependencies
 
   useEffect(() => {
     if (isChatOpen) setUnreadCount(0);

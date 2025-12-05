@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 import { 
   Plus, LogOut, TrendingUp, Calendar, ChevronRight, 
   Shield, Loader2, ArrowUpRight, AlertTriangle, CheckCircle, 
-  User, Star, SteeringWheel, Map, Clock 
+  User, Star, Car, Map, Clock 
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/ToastProvider';
@@ -184,7 +184,7 @@ export default function DriverDashboard() {
                     onClick={() => handleManageRide(activeRide)}
                     className="bg-green-600 text-white px-6 py-3 rounded-full font-bold shadow-lg shadow-green-600/20 hover:bg-green-700 transition flex items-center gap-2 animate-pulse"
                 >
-                    <SteeringWheel className="w-5 h-5"/> Resume Active Trip
+                    <Car className="w-5 h-5"/> Resume Active Trip
                 </button>
             )}
         </div>

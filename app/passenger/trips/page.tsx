@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { Calendar, Clock, AlertCircle, Loader2, XCircle, User, Phone, ShieldCheck, CreditCard, Navigation, Ticket } from 'lucide-react';
+import { Calendar, Clock, AlertCircle, Loader2, XCircle, User, Phone, ShieldCheck, CreditCard, Navigation } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import { BookingWithRide } from '@/types';
 import { format } from 'date-fns';
@@ -61,7 +61,45 @@ export default function TripsPage() {
 
   useEffect(() => {
     fetchTrips();
-  }, [fetchTrips]);
+
+    // Realtime subscription for both Rides and Bookings
+    const channel = supabase.channel('passenger-trips-realtime')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'rides' },
+        (payload) => {
+            // Update the specific ride within the bookings list
+            setBookings((currentBookings) => 
+                currentBookings.map((booking) => {
+                    if (booking.rides && booking.rides.id === payload.new.id) {
+                        return {
+                            ...booking,
+                            rides: { ...booking.rides, ...payload.new }
+                        };
+                    }
+                    return booking;
+                })
+            );
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'bookings' },
+        (payload) => {
+            // Update the booking status itself
+            setBookings((currentBookings) => 
+                currentBookings.map((booking) => 
+                    booking.id === payload.new.id ? { ...booking, ...payload.new } : booking
+                )
+            );
+        }
+      )
+      .subscribe();
+
+    return () => {
+        supabase.removeChannel(channel);
+    };
+  }, [fetchTrips, supabase]);
 
   const handleCancelBooking = async () => {
     if (!selectedBooking) return;
@@ -75,6 +113,7 @@ export default function TripsPage() {
       if (error) throw error;
 
       addToast('Trip cancelled successfully', 'success');
+      // Optimistic update
       setBookings(prev => prev.map(b => b.id === selectedBooking.id ? { ...b, status: 'cancelled' } : b));
       setCancelModalOpen(false);
       setDetailsModalOpen(false);
@@ -93,25 +132,51 @@ export default function TripsPage() {
   };
 
   const handleTripClick = (booking: BookingWithRide) => {
-    // If upcoming/active, go to tracking page
-    if (activeTab === 'upcoming' && booking.status === 'confirmed') {
-        router.push(`/passenger/track?booking_id=${booking.id}`);
-    } else {
-        // Otherwise show details modal
-        setSelectedBooking(booking);
-        setDetailsModalOpen(true);
+    // If trip is active, go to track page
+    if (booking.rides?.status === 'active' || booking.rides?.status === 'scheduled') {
+        if (booking.status === 'confirmed') {
+            router.push(`/passenger/track?booking_id=${booking.id}`);
+            return;
+        }
     }
+    // Otherwise show receipt/details
+    setSelectedBooking(booking);
+    setDetailsModalOpen(true);
   };
 
   const getFilteredTrips = () => {
-    const now = new Date();
     return bookings.filter((b) => {
       if (!b.rides) return false;
-      const rideDate = new Date(b.rides.departure_time);
       
-      if (b.status === 'cancelled') return activeTab === 'cancelled';
-      if (activeTab === 'upcoming') return rideDate > now && b.status === 'confirmed';
-      if (activeTab === 'completed') return rideDate <= now && b.status === 'confirmed';
+      const rideStatus = b.rides.status; // scheduled, active, completed, cancelled
+      const bookingStatus = b.status; // confirmed, cancelled, pending_payment
+
+      // Cancelled Tab
+      if (activeTab === 'cancelled') {
+          return bookingStatus === 'cancelled' || rideStatus === 'cancelled';
+      }
+      
+      // Completed Tab
+      if (activeTab === 'completed') {
+          // Show completed rides where booking wasn't cancelled
+          return rideStatus === 'completed' && bookingStatus !== 'cancelled';
+      }
+      
+      // Upcoming Tab
+      if (activeTab === 'upcoming') {
+          if (bookingStatus === 'cancelled') return false;
+          
+          // Show scheduled and active rides
+          if (rideStatus === 'scheduled' || rideStatus === 'active') return true;
+          
+          // EDGE CASE: If ride just completed but user hasn't paid/rated (or just for UX),
+          // we can keep it here momentarily. For now, let's move completed rides 
+          // to 'Upcoming' IF payment is still pending, otherwise let them go to Completed tab.
+          if (rideStatus === 'completed' && b.payment_status === 'pending') return true;
+          
+          return false;
+      }
+      
       return false;
     });
   };
@@ -156,7 +221,9 @@ export default function TripsPage() {
             <div 
               key={b.id} 
               onClick={() => handleTripClick(b)}
-              className="bg-white border border-slate-100 rounded-2xl p-6 hover:border-black/10 hover:shadow-lg transition group cursor-pointer relative"
+              className={`bg-white border rounded-2xl p-6 hover:shadow-lg transition group cursor-pointer relative ${
+                  b.rides?.status === 'completed' ? 'border-green-200 bg-green-50/30' : 'border-slate-100 hover:border-black/10'
+              }`}
             >
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 
@@ -192,7 +259,7 @@ export default function TripsPage() {
                 <div className="flex flex-col items-end gap-2">
                   <div className="text-lg font-bold text-slate-900">{APP_CONFIG.currency}{b.rides ? (b.rides.price_per_seat * b.seats_booked).toLocaleString() : 0}</div>
                   
-                  {activeTab === 'upcoming' ? (
+                  {activeTab === 'upcoming' && b.rides?.status !== 'completed' ? (
                     <div className="flex items-center gap-2">
                         <button 
                             onClick={(e) => openCancelModal(b, e)}
@@ -200,16 +267,18 @@ export default function TripsPage() {
                         >
                             <XCircle className="w-3 h-3"/> Cancel
                         </button>
-                        <span className="text-xs font-bold text-white bg-black px-3 py-1.5 rounded-lg flex items-center gap-1">
+                        <span className="text-xs font-bold text-white bg-black px-3 py-1.5 rounded-lg flex items-center gap-1 animate-pulse">
                             <Navigation className="w-3 h-3"/> Track
                         </span>
                     </div>
                   ) : (
                     <div className={`text-xs font-bold px-2 py-1 rounded-md inline-flex items-center gap-1 ${
-                      b.status === 'confirmed' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+                      b.rides?.status === 'completed' ? 'bg-green-100 text-green-700' : 
+                      b.status === 'confirmed' ? 'bg-slate-100 text-slate-700' : 'bg-red-50 text-red-700'
                     }`}>
                       {b.status === 'cancelled' && <AlertCircle className="w-3 h-3" />}
-                      {b.status.toUpperCase()}
+                      {/* Show ride status if available, else booking status */}
+                      {(b.rides?.status === 'completed' ? 'COMPLETED' : b.status.toUpperCase())}
                     </div>
                   )}
                 </div>
@@ -256,9 +325,10 @@ export default function TripsPage() {
                   <p className="font-mono font-bold text-slate-900">{selectedBooking.id.slice(0, 8).toUpperCase()}</p>
                </div>
                <div className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                  selectedBooking.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                  selectedBooking.rides.status === 'completed' ? 'bg-green-100 text-green-700' :
+                  selectedBooking.status === 'confirmed' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'
                }`}>
-                  {selectedBooking.status}
+                  {selectedBooking.rides.status === 'completed' ? 'COMPLETED' : selectedBooking.status}
                </div>
             </div>
 

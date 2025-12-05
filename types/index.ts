@@ -8,16 +8,19 @@ export interface Profile {
   address?: string;
   role: UserRole;
   is_verified: boolean;
+  is_online?: boolean; // Added for driver status
   avatar_url?: string;
   preferences?: {
     email_updates: boolean;
     sms_notifications: boolean;
     security_alerts: boolean;
   };
+  // Driver specific
   license_number?: string;
   vehicle_model?: string;
   vehicle_year?: string;
   vehicle_plate?: string;
+  vehicle_color?: string;
   created_at: string;
 }
 
@@ -49,6 +52,13 @@ export interface Ride {
   total_seats: number;
   price_per_seat: number;
   status: 'scheduled' | 'active' | 'completed' | 'cancelled';
+  driver_arrived?: boolean;
+  created_at?: string;
+}
+
+// Helper type for joins
+export interface RideWithBookings extends Ride {
+  bookings: (Booking & { profiles: Profile })[];
 }
 
 export interface RideWithDriver extends Ride {
