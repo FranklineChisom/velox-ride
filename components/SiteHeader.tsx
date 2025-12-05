@@ -97,8 +97,19 @@ export default function SiteHeader() {
               </div>
             ) : (
               <>
-                <Link href="/auth?role=passenger" className="text-sm font-bold text-slate-900 hover:text-slate-600 transition">Log in</Link>
-                <Link href="/auth?role=passenger" className="bg-black text-white px-6 py-3 rounded-full text-sm font-bold hover:bg-slate-800 transition shadow-lg shadow-black/10 transform hover:-translate-y-0.5">
+                {/* Updated Login Link: Explicitly sets view=login */}
+                <Link 
+                  href="/auth?view=login&role=passenger" 
+                  className="text-sm font-bold text-slate-900 hover:text-slate-600 transition"
+                >
+                  Log in
+                </Link>
+                
+                {/* Updated Sign Up Link: Explicitly sets view=signup */}
+                <Link 
+                  href="/auth?view=signup&role=passenger" 
+                  className="bg-black text-white px-6 py-3 rounded-full text-sm font-bold hover:bg-slate-800 transition shadow-lg shadow-black/10 transform hover:-translate-y-0.5"
+                >
                   Sign up
                 </Link>
               </>
@@ -138,8 +149,23 @@ export default function SiteHeader() {
               </>
             ) : (
               <>
-                <Link href="/auth?role=passenger" className="w-full bg-slate-100 text-slate-900 py-3.5 rounded-lg text-center font-bold" onClick={() => setMobileMenuOpen(false)}>Log In</Link>
-                <Link href="/auth?role=passenger" className="w-full bg-black text-white py-3.5 rounded-lg text-center font-bold" onClick={() => setMobileMenuOpen(false)}>Sign Up</Link>
+                {/* Updated Mobile Login Link */}
+                <Link 
+                  href="/auth?view=login&role=passenger" 
+                  className="w-full bg-slate-100 text-slate-900 py-3.5 rounded-lg text-center font-bold" 
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Log In
+                </Link>
+                
+                {/* Updated Mobile Sign Up Link */}
+                <Link 
+                  href="/auth?view=signup&role=passenger" 
+                  className="w-full bg-black text-white py-3.5 rounded-lg text-center font-bold" 
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Sign Up
+                </Link>
               </>
             )}
         </div>

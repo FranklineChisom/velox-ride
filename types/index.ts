@@ -3,44 +3,27 @@ export type UserRole = 'passenger' | 'driver' | 'employee' | 'manager' | 'supera
 export interface Profile {
   id: string;
   email: string;
-  full_name: string;
+  full_name: string | null;
   phone_number: string | null;
-  address?: string;
+  avatar_url?: string | null;
   role: UserRole;
   is_verified: boolean;
-  is_online?: boolean; // Added for driver status
-  avatar_url?: string;
+  is_online: boolean; // Driver specific status
+  
+  // Driver specifics
+  vehicle_model?: string | null;
+  vehicle_year?: string | null;
+  vehicle_plate?: string | null;
+  vehicle_color?: string | null;
+  
+  // Preferences
   preferences?: {
+    notifications_enabled: boolean;
     email_updates: boolean;
-    sms_notifications: boolean;
-    security_alerts: boolean;
   };
-  // Driver specific
-  license_number?: string;
-  vehicle_model?: string;
-  vehicle_year?: string;
-  vehicle_plate?: string;
-  vehicle_color?: string;
+  
   created_at: string;
-}
-
-export interface EmergencyContact {
-  id: string;
-  user_id: string;
-  name: string;
-  phone_number: string;
-  relationship: string;
-}
-
-export interface Review {
-  id: string;
-  ride_id?: string;
-  reviewer_id: string;
-  reviewee_id: string;
-  rating: number;
-  comment: string;
-  created_at: string;
-  profiles?: Profile;
+  updated_at?: string;
 }
 
 export interface Ride {
@@ -48,21 +31,20 @@ export interface Ride {
   driver_id: string;
   origin: string;
   destination: string;
+  origin_lat: number;
+  origin_lng: number;
+  destination_lat: number;
+  destination_lng: number;
   departure_time: string;
   total_seats: number;
   price_per_seat: number;
   status: 'scheduled' | 'active' | 'completed' | 'cancelled';
-  driver_arrived?: boolean;
-  created_at?: string;
-}
-
-// Helper type for joins
-export interface RideWithBookings extends Ride {
-  bookings: (Booking & { profiles: Profile })[];
-}
-
-export interface RideWithDriver extends Ride {
-  profiles: Pick<Profile, 'full_name' | 'phone_number' | 'is_verified' | 'avatar_url'> | null;
+  driver_arrived: boolean;
+  created_at: string;
+  
+  // Joins
+  profiles?: Profile;
+  bookings?: Booking[];
 }
 
 export interface Booking {
@@ -75,10 +57,10 @@ export interface Booking {
   payment_status: 'paid' | 'pending' | 'failed';
   payment_reference?: string;
   created_at: string;
-}
-
-export interface BookingWithRide extends Booking {
-  rides: (Ride & { profiles: Profile }) | null;
+  
+  // Joins
+  profiles?: Profile; // Passenger details
+  rides?: Ride;
 }
 
 export interface Wallet {
@@ -86,6 +68,7 @@ export interface Wallet {
   user_id: string;
   balance: number;
   currency: string;
+  created_at: string;
 }
 
 export interface Transaction {
@@ -94,18 +77,9 @@ export interface Transaction {
   amount: number;
   type: 'credit' | 'debit';
   description: string;
-  reference?: string;
   status: 'success' | 'failed' | 'pending';
+  reference: string;
   created_at: string;
-}
-
-export interface SavedPlace {
-  id: string;
-  user_id: string;
-  label: string;
-  address: string;
-  lat?: number;
-  lng?: number;
 }
 
 export interface Coordinates {
@@ -118,33 +92,4 @@ export interface Suggestion {
   display_name: string;
   lat: string;
   lon: string;
-}
-
-export interface SearchHistoryItem {
-  id: string;
-  destination_name: string;
-  origin_name?: string;
-  origin_lat?: number;
-  origin_lng?: number;
-  destination_lat?: number;
-  destination_lng?: number;
-  created_at?: string;
-}
-
-export interface SupportTicket {
-  id: string;
-  user_id: string;
-  subject: string;
-  message: string;
-  status: 'open' | 'in_progress' | 'resolved' | 'closed';
-  created_at: string;
-}
-
-export interface Message {
-  id: string;
-  booking_id: string;
-  sender_id: string;
-  content: string;
-  is_read: boolean;
-  created_at: string;
 }

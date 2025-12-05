@@ -36,43 +36,41 @@ export async function middleware(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
 
-  // 1. Redirect unauthenticated users
+  // 1. Protected Routes Configuration
+  const protectedPaths = [
+    { path: '/driver', allowedRoles: ['driver'] },
+    { path: '/passenger', allowedRoles: ['passenger'] },
+    { path: '/admin', allowedRoles: ['superadmin'] },
+    { path: '/manager', allowedRoles: ['manager', 'superadmin'] },
+    { path: '/staff', allowedRoles: ['employee', 'manager', 'superadmin'] },
+  ];
+
+  // 2. Redirect unauthenticated users
   if (!user) {
-    if (path.startsWith('/driver') || path.startsWith('/passenger') || path.startsWith('/admin') || path.startsWith('/staff') || path.startsWith('/manager')) {
+    if (protectedPaths.some(p => path.startsWith(p.path))) {
       const redirectUrl = new URL('/auth', request.url);
       redirectUrl.searchParams.set('next', path);
+      // Heuristic to set role hint for login page
       if (path.startsWith('/driver')) redirectUrl.searchParams.set('role', 'driver');
-      else redirectUrl.searchParams.set('role', 'passenger');
       return NextResponse.redirect(redirectUrl);
     }
     return response;
   }
 
-  // 2. Role-Based Access Control (RBAC)
+  // 3. Role-Based Access Control (RBAC)
   const userRole = (user.user_metadata?.role as UserRole) || 'passenger';
 
-  // --- Strict Route Guards ---
-  
-  if (path.startsWith('/driver') && userRole !== 'driver') {
-    return NextResponse.redirect(new URL(getDashboardRoute(userRole), request.url));
+  // Check against protected paths
+  for (const route of protectedPaths) {
+    if (path.startsWith(route.path)) {
+      if (!route.allowedRoles.includes(userRole)) {
+        // User has logged in but is accessing wrong dashboard
+        return NextResponse.redirect(new URL(getDashboardRoute(userRole), request.url));
+      }
+    }
   }
 
-  if (path.startsWith('/passenger') && userRole !== 'passenger') {
-    return NextResponse.redirect(new URL(getDashboardRoute(userRole), request.url));
-  }
-
-  if (path.startsWith('/admin') && userRole !== 'superadmin') {
-    return NextResponse.redirect(new URL(getDashboardRoute(userRole), request.url));
-  }
-
-  if (path.startsWith('/manager') && userRole !== 'manager' && userRole !== 'superadmin') {
-    return NextResponse.redirect(new URL(getDashboardRoute(userRole), request.url));
-  }
-
-  if (path.startsWith('/staff') && userRole !== 'employee' && userRole !== 'manager' && userRole !== 'superadmin') {
-    return NextResponse.redirect(new URL(getDashboardRoute(userRole), request.url));
-  }
-
+  // 4. Prevent authenticated users from visiting Auth page
   if (path === '/auth') {
     return NextResponse.redirect(new URL(getDashboardRoute(userRole), request.url));
   }
