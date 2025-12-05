@@ -5,7 +5,7 @@ import { useDriverDashboard } from '@/hooks/useDriverDashboard';
 import { RideWithBookings } from '@/types';
 import { 
   Loader2, TrendingUp, Calendar, Star, Plus, 
-  AlertTriangle, Navigation, Car, ShieldCheck, CheckCircle 
+  AlertTriangle, Navigation, Car, ShieldCheck, CheckCircle, Clock 
 } from 'lucide-react';
 import Link from 'next/link';
 import { format, isToday } from 'date-fns';
@@ -25,23 +25,62 @@ export default function DriverDashboard() {
 
   if (loading) return <div className="flex justify-center items-center h-[60vh]"><Loader2 className="w-10 h-10 animate-spin text-slate-300"/></div>;
 
+  // --- RESTRICTED DASHBOARD FOR UNVERIFIED DRIVERS ---
+  if (!isVerified) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 space-y-8 animate-fade-in">
+         <div className="text-center space-y-4">
+            <div className="w-20 h-20 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+               <Clock className="w-10 h-10"/>
+            </div>
+            <h1 className="text-3xl font-bold text-slate-900">Application Under Review</h1>
+            <p className="text-slate-500 text-lg leading-relaxed">
+               Your profile is currently being reviewed by our Trust & Safety team. <br/>
+               You will be notified once your account is activated.
+            </p>
+         </div>
+
+         <div className="bg-white border border-slate-100 rounded-[2rem] p-8 shadow-sm space-y-6">
+            <h3 className="font-bold text-slate-900 border-b border-slate-50 pb-4">Application Status</h3>
+            
+            <div className="flex items-start gap-4">
+               <div className="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center shrink-0"><CheckCircle className="w-5 h-5"/></div>
+               <div>
+                  <h4 className="font-bold text-slate-900">Profile & Vehicle</h4>
+                  <p className="text-sm text-slate-500">Information submitted successfully.</p>
+               </div>
+            </div>
+
+            <div className="flex items-start gap-4">
+               <div className="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center shrink-0"><CheckCircle className="w-5 h-5"/></div>
+               <div>
+                  <h4 className="font-bold text-slate-900">Documents Uploaded</h4>
+                  <p className="text-sm text-slate-500">We have received your documents.</p>
+               </div>
+            </div>
+
+            <div className="flex items-start gap-4 opacity-50">
+               <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center shrink-0"><ShieldCheck className="w-5 h-5"/></div>
+               <div>
+                  <h4 className="font-bold text-slate-900">Background Check</h4>
+                  <p className="text-sm text-slate-500">Pending verification from authorities.</p>
+               </div>
+            </div>
+         </div>
+
+         <div className="text-center">
+            <Link href="/driver/settings" className="text-slate-400 font-bold hover:text-black transition">
+               Update Documents
+            </Link>
+         </div>
+      </div>
+    );
+  }
+
+  // --- FULL DASHBOARD FOR VERIFIED DRIVERS ---
   return (
     <div className="space-y-8">
       
-      {/* 1. Verification Alert */}
-      {!isVerified && (
-        <div className="bg-orange-50 border border-orange-200 p-6 rounded-3xl flex flex-col md:flex-row items-start md:items-center gap-4 shadow-sm animate-fade-in">
-           <div className="p-3 bg-orange-100 rounded-full text-orange-600"><AlertTriangle className="w-6 h-6"/></div>
-           <div className="flex-1">
-              <h3 className="font-bold text-orange-900 text-lg">Account Verification Required</h3>
-              <p className="text-orange-800/80 text-sm mt-1">To ensure safety, verify your documents before accepting passengers.</p>
-           </div>
-           <Link href="/driver/settings" className="bg-orange-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-orange-700 transition whitespace-nowrap">
-              Upload Documents
-           </Link>
-        </div>
-      )}
-
       {/* 2. Top Stats Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <StatCard 
@@ -71,14 +110,12 @@ export default function DriverDashboard() {
         <div className="lg:col-span-2 space-y-6">
            <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold text-slate-900">Current Mission</h2>
-              {isVerified && (
-                <button 
-                  onClick={() => setShowCreateModal(true)}
-                  className="bg-slate-900 text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-slate-800 transition flex items-center gap-2 shadow-lg"
-                >
-                  <Plus className="w-4 h-4"/> New Trip
-                </button>
-              )}
+              <button 
+                onClick={() => setShowCreateModal(true)}
+                className="bg-slate-900 text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-slate-800 transition flex items-center gap-2 shadow-lg"
+              >
+                <Plus className="w-4 h-4"/> New Trip
+              </button>
            </div>
 
            {activeRide ? (
@@ -154,11 +191,7 @@ export default function DriverDashboard() {
                 </div>
                 <h3 className="font-bold text-slate-900 text-lg mb-2">No active missions</h3>
                 <p className="text-slate-500 max-w-sm mb-6">Your schedule is clear. Create a trip to start earning money on your commute.</p>
-                {isVerified ? (
-                   <button onClick={() => setShowCreateModal(true)} className="text-black font-bold underline hover:text-slate-700">Schedule a Trip</button>
-                ) : (
-                   <Link href="/driver/settings" className="text-orange-600 font-bold underline">Verify Account First</Link>
-                )}
+                <button onClick={() => setShowCreateModal(true)} className="text-black font-bold underline hover:text-slate-700">Schedule a Trip</button>
              </div>
            )}
         </div>

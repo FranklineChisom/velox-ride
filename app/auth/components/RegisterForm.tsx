@@ -27,7 +27,10 @@ export default function RegisterForm({ role, onSuccess }: Props) {
     setError(null);
 
     try {
-      const { error: signUpError } = await supabase.auth.signUp({
+      // 1. Check if user exists (Optional: Supabase signUp returns error if exists, but we can be explicit)
+      // Actually, relying on signUp error is safer and standard. 
+      
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: { 
@@ -36,7 +39,19 @@ export default function RegisterForm({ role, onSuccess }: Props) {
         },
       });
 
-      if (signUpError) throw signUpError;
+      if (signUpError) {
+        // Handle specific error for existing user
+        if (signUpError.message.includes("already registered") || signUpError.status === 422) {
+            throw new Error("This email is already registered. Please log in instead.");
+        }
+        throw signUpError;
+      }
+      
+      // Check if the user is identical (sometimes Supabase returns a user but doesn't error if unconfirmed)
+      if (data.user && data.user.identities && data.user.identities.length === 0) {
+          throw new Error("This email is already registered. Please log in.");
+      }
+
       setShowSuccessModal(true);
     } catch (err: any) {
       setError(err.message || 'Registration failed.');

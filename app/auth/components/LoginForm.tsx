@@ -3,17 +3,16 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Mail, Lock, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, Mail, Lock } from 'lucide-react';
 import { UserRole } from '@/types';
-import Button from '@/components/ui/Button';
-import Input from '@/components/ui/Input';
 
 interface Props {
   onForgot: () => void;
 }
 
 export default function LoginForm({ onForgot }: Props) {
-  const [formData, setFormData] = useState({ email: '', password: '' });
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -34,11 +33,6 @@ export default function LoginForm({ onForgot }: Props) {
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-    if (error) setError(null);
-  };
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -46,81 +40,79 @@ export default function LoginForm({ onForgot }: Props) {
 
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: formData.email,
-        password: formData.password,
+        email,
+        password,
       });
 
-      if (error) throw error;
+      if (error) {
+        if (error.message.includes("Invalid login credentials")) {
+            throw new Error("Invalid email or password. Please check your details.");
+        }
+        throw error;
+      }
 
-      if (data.session) {
-        const role = (data.user.user_metadata?.role as UserRole) || 'passenger';
-        const destination = getDashboard(role);
-        
-        // Use window.location for a hard redirect to ensure context reloads completely
-        // This avoids Next.js router cache issues with Auth state
-        window.location.href = destination; 
+      if (data.user) {
+        // Force refresh session to ensure role metadata is available
+        const role = data.user.user_metadata?.role || 'passenger';
+        router.push(getDashboard(role));
+        router.refresh();
       }
     } catch (err: any) {
-      console.error(err);
-      setError(err.message === 'Invalid login credentials' 
-        ? 'Incorrect email or password. Please try again.' 
-        : 'Something went wrong. Please check your connection.');
-      setLoading(false); // Only stop loading on error
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <form onSubmit={handleLogin} className="space-y-6">
+    <form onSubmit={handleLogin} className="space-y-5">
       {error && (
-        <div className="bg-red-50 border border-red-100 text-red-600 p-4 rounded-xl text-sm font-medium flex items-start gap-3 animate-fade-in">
+        <div className="bg-red-50 border border-red-100 text-red-600 p-4 rounded-xl text-sm font-medium flex items-start gap-3">
           <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>
       )}
 
-      <div className="space-y-4">
-        <Input 
-          name="email"
-          type="email"
-          label="Email Address"
-          placeholder="name@example.com"
-          icon={<Mail className="w-5 h-5" />}
-          value={formData.email}
-          onChange={handleChange}
-          required
-        />
-
-        <div className="space-y-1.5">
-          <Input 
-            name="password"
-            type="password"
-            label="Password"
-            placeholder="••••••••"
-            icon={<Lock className="w-5 h-5" />}
-            value={formData.password}
-            onChange={handleChange}
-            required
+      <div className="space-y-1.5">
+        <label className="text-xs font-bold text-slate-700 ml-1 uppercase tracking-wider">Email</label>
+        <div className="relative">
+          <Mail className="absolute left-4 top-3.5 w-5 h-5 text-slate-400" />
+          <input 
+            type="email" 
+            required 
+            className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-black focus:border-transparent transition font-medium" 
+            placeholder="name@example.com" 
+            value={email} 
+            onChange={(e) => setEmail(e.target.value)} 
           />
-          <div className="text-right">
-            <button 
-              type="button" 
-              onClick={onForgot} 
-              className="text-xs font-bold text-slate-500 hover:text-black transition"
-            >
-              Forgot password?
-            </button>
-          </div>
         </div>
       </div>
 
-      <Button 
+      <div className="space-y-1.5">
+        <label className="text-xs font-bold text-slate-700 ml-1 uppercase tracking-wider">Password</label>
+        <div className="relative">
+          <Lock className="absolute left-4 top-3.5 w-5 h-5 text-slate-400" />
+          <input 
+            type="password" 
+            required 
+            className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-black focus:border-transparent transition font-medium" 
+            placeholder="••••••••" 
+            value={password} 
+            onChange={(e) => setPassword(e.target.value)} 
+          />
+        </div>
+        <div className="text-right">
+          <button type="button" onClick={onForgot} className="text-xs font-bold text-slate-500 hover:text-black">Forgot password?</button>
+        </div>
+      </div>
+
+      <button 
         type="submit" 
-        isLoading={loading} 
-        size="lg" 
-        className="w-full"
+        disabled={loading} 
+        className="w-full py-4 bg-black text-white rounded-xl font-bold text-lg hover:bg-slate-800 transition flex items-center justify-center gap-2 shadow-xl shadow-black/10 disabled:opacity-70 disabled:cursor-not-allowed"
       >
-        Sign In
-      </Button>
+        {loading ? <Loader2 className="animate-spin w-5 h-5" /> : 'Log In'}
+      </button>
     </form>
   );
 }

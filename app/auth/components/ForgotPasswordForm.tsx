@@ -29,7 +29,12 @@ export default function ForgotPasswordForm({ onBack }: Props) {
       if (error) throw error;
       setSent(true);
     } catch (err: any) {
-      setError(err.message);
+      // Rate limit errors are common here
+      if (err.message.includes("rate limit")) {
+          setError("Please wait a moment before trying again.");
+      } else {
+          setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -43,7 +48,9 @@ export default function ForgotPasswordForm({ onBack }: Props) {
         </div>
         <div>
           <h3 className="text-lg font-bold text-slate-900 mb-2">Recovery Email Sent</h3>
-          <p className="text-slate-500 text-sm">Check {email} for instructions to reset your password.</p>
+          <p className="text-slate-500 text-sm">
+            If an account exists for <strong>{email}</strong>, you will receive instructions to reset your password shortly.
+          </p>
         </div>
         <button onClick={onBack} className="text-black font-bold underline hover:text-slate-600">Back to Login</button>
       </div>

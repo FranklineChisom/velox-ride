@@ -38,17 +38,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const isAuthPage = pathname?.startsWith('/auth');
     const isOnboardingPage = pathname?.startsWith('/onboarding');
 
-    // 1. If not completed, force onboarding (unless on auth/onboarding pages)
-    if (step !== 'COMPLETED') {
+    // LOGIC FIX: 
+    // We treat 'AWAITING_APPROVAL' as "Onboarding Done" for the purpose of navigation.
+    // This allows the driver to land on /driver (where the dashboard handles the pending state).
+    const isExitAllowed = step === 'COMPLETED' || step === 'AWAITING_APPROVAL';
+
+    if (!isExitAllowed) {
+      // If truly incomplete (e.g. missing vehicle/docs), force /onboarding
       if (!isOnboardingPage && !isAuthPage) {
         router.replace('/onboarding');
       }
     } 
-    // 2. If completed, but logic to prevent premature redirect from onboarding page
-    // We ONLY auto-redirect if they are NOT on the onboarding page (e.g. they landed on home)
-    else if (step === 'COMPLETED' && !isOnboardingPage && !isAuthPage) {
-        const dashboard = currentProfile.role === 'driver' ? '/driver' : '/passenger';
-        router.replace(dashboard);
+    else {
+      // If completed OR awaiting approval, send to dashboard if they try to visit onboarding
+      if (isOnboardingPage || isAuthPage) {
+          const dashboard = currentProfile.role === 'driver' ? '/driver' : '/passenger';
+          router.replace(dashboard);
+      }
     }
   };
 
@@ -71,6 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         if (session?.user) {
           setUser(session.user);
+          // Only fetch if profile is stale or missing
           if (!profile || profile.id !== session.user.id) {
              const p = await AuthService.getProfile(session.user.id);
              setProfile(p);

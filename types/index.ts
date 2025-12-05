@@ -9,7 +9,7 @@ export interface Profile {
   role: UserRole;
   full_name: string | null;
   phone_number: string | null;
-  phone_verified: boolean; // CRITICAL: Added this
+  phone_verified: boolean; 
   avatar_url?: string | null;
   
   // Compliance & State
@@ -70,7 +70,14 @@ export interface Guarantor {
   is_verified: boolean;
 }
 
-// ... (Rest of your existing Ride, Booking, Wallet, etc. types remain unchanged)
+// Helper type for the Review Dashboard
+export interface DriverApplication {
+  profile: Profile;
+  vehicle: Vehicle | null;
+  guarantor: Guarantor | null;
+  documents: ComplianceRecord[];
+}
+
 export interface Ride {
   id: string;
   driver_id: string;
