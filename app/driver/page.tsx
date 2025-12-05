@@ -1,89 +1,27 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase';
-import { RideWithBookings, Profile } from '@/types';
+import { useState } from 'react';
 import { APP_CONFIG } from '@/lib/constants';
+import { useDriverDashboard } from '@/hooks/useDriverDashboard';
+import { RideWithBookings } from '@/types';
 import { 
   Loader2, TrendingUp, Calendar, Star, Plus, 
-  AlertTriangle, CheckCircle, Navigation, Car, ShieldCheck // Added missing imports
+  AlertTriangle, Navigation, Car, ShieldCheck, CheckCircle 
 } from 'lucide-react';
-import { useToast } from '@/components/ui/ToastProvider';
+import Link from 'next/link';
+import { format, isToday } from 'date-fns';
+
+// Components
 import CreateTripModal from '@/components/driver/CreateTripModal';
 import RideManagerModal from '@/components/driver/RideManagerModal';
 import StatCard from '@/components/ui/StatCard';
-import { format, isToday } from 'date-fns';
-import Link from 'next/link';
 
 export default function DriverDashboard() {
-  const supabase = createClient();
-  const { addToast } = useToast();
+  const { 
+    loading, profile, activeRide, nextRide, stats, isVerified, refresh 
+  } = useDriverDashboard();
   
-  const [loading, setLoading] = useState(true);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [activeRide, setActiveRide] = useState<RideWithBookings | null>(null);
-  const [nextRide, setNextRide] = useState<RideWithBookings | null>(null);
-  const [stats, setStats] = useState({ earnings: 0, totalRides: 0, rating: 5.0 });
-  const [isVerified, setIsVerified] = useState(false);
-  
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   const [selectedRide, setSelectedRide] = useState<RideWithBookings | null>(null);
-
-  const fetchDashboardData = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-      if (profileData) {
-        setProfile(profileData);
-        setIsVerified(profileData.is_verified);
-      }
-
-      const { data: rides } = await supabase
-        .from('rides')
-        .select(`*, bookings(*, profiles(*))`)
-        .eq('driver_id', user.id)
-        .order('departure_time', { ascending: true });
-
-      if (rides) {
-        const typedRides = rides as unknown as RideWithBookings[];
-        
-        const completed = typedRides.filter(r => r.status === 'completed');
-        const earnings = completed.reduce((sum, ride) => {
-           const rideTotal = ride.bookings
-             .filter(b => b.status === 'confirmed')
-             .reduce((sub, b) => sub + (ride.price_per_seat * b.seats_booked), 0);
-           return sum + rideTotal;
-        }, 0);
-
-        setStats({
-          earnings,
-          totalRides: completed.length,
-          rating: 4.8 
-        });
-
-        const now = new Date();
-        const active = typedRides.find(r => r.status === 'active' || (r.status === 'scheduled' && r.driver_arrived));
-        
-        const upcoming = typedRides.find(r => 
-          r.status === 'scheduled' && 
-          !r.driver_arrived && 
-          new Date(r.departure_time) > now
-        );
-
-        setActiveRide(active || null);
-        setNextRide(upcoming || null);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
 
   if (loading) return <div className="flex justify-center items-center h-[60vh]"><Loader2 className="w-10 h-10 animate-spin text-slate-300"/></div>;
 
@@ -254,10 +192,10 @@ export default function DriverDashboard() {
 
       {/* Modals */}
       {showCreateModal && profile && (
-        <CreateTripModal driverId={profile.id} onClose={() => setShowCreateModal(false)} onSuccess={fetchDashboardData} />
+        <CreateTripModal driverId={profile.id} onClose={() => setShowCreateModal(false)} onSuccess={refresh} />
       )}
       {selectedRide && (
-        <RideManagerModal ride={selectedRide} bookings={selectedRide.bookings} onClose={() => setSelectedRide(null)} onUpdate={fetchDashboardData} />
+        <RideManagerModal ride={selectedRide} bookings={selectedRide.bookings} onClose={() => setSelectedRide(null)} onUpdate={refresh} />
       )}
     </div>
   );

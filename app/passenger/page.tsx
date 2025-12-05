@@ -1,247 +1,70 @@
 'use client';
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { createClient } from '@/lib/supabase';
-import { APP_CONFIG } from '@/lib/constants';
-import { getRoute, reverseGeocode } from '@/lib/osm';
-import { useToast } from '@/components/ui/ToastProvider';
-import { Suggestion, SearchHistoryItem, Coordinates, SavedPlace, Wallet, Profile, BookingWithRide } from '@/types';
-import { 
-  MapPin, Home as HomeIcon, Briefcase, User, Star, 
-  ArrowRight, Loader2, Navigation, History, X, Calendar, Clock, ArrowDown
-} from 'lucide-react';
 import Link from 'next/link';
+import { History, ArrowDown, X } from 'lucide-react';
+import { APP_CONFIG } from '@/lib/constants';
+import { usePassengerDashboard } from '@/hooks/usePassengerDashboard';
+import { reverseGeocode } from '@/lib/osm';
+import { useToast } from '@/components/ui/ToastProvider';
+import { Coordinates } from '@/types';
+
+// Components
+import BookingWidget from '@/components/passenger/BookingWidget';
 import StatCard from '@/components/ui/StatCard';
-import { format } from 'date-fns';
 
 const LeafletMap = dynamic(() => import('@/components/Map'), { 
   ssr: false,
-  loading: () => (
-    <div className="h-full w-full bg-slate-100 animate-pulse rounded-3xl flex items-center justify-center text-slate-400">
-      <Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading Map...
-    </div>
-  )
+  loading: () => <div className="h-full bg-slate-100 rounded-3xl animate-pulse"></div>
 });
 
 export default function PassengerDashboard() {
-  const supabase = createClient();
-  const router = useRouter();
+  const { 
+    loading, profile, wallet, stats, greeting, savedPlaces, recentSearches 
+  } = usePassengerDashboard();
+  
   const { addToast } = useToast();
   
-  // Data State
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [wallet, setWallet] = useState<Wallet | null>(null);
-  const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
-  const [recentSearches, setRecentSearches] = useState<SearchHistoryItem[]>([]);
-  const [greeting, setGreeting] = useState('Welcome');
-  const [activeBooking, setActiveBooking] = useState<BookingWithRide | null>(null);
-  const [upcomingBooking, setUpcomingBooking] = useState<BookingWithRide | null>(null);
-  const [stats, setStats] = useState({ rides: 0, spent: 0 });
-
-  // Search & Map State
-  const [query, setQuery] = useState({ origin: '', destination: '' });
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('');
-  const [coords, setCoords] = useState<{ pickup?: Coordinates; dropoff?: Coordinates }>({});
+  // Lifted Map State to coordinate between Map and Widget
   const [mapMode, setMapMode] = useState<'pickup' | 'dropoff' | null>(null);
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [activeField, setActiveField] = useState<'origin' | 'destination' | null>(null);
-  const [isTyping, setIsTyping] = useState(false);
-  const [loadingLocation, setLoadingLocation] = useState(false);
-  const [route, setRoute] = useState<[number, number][] | undefined>(undefined);
-
-  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const bookingWidgetRef = useRef<HTMLDivElement>(null);
-
-  const fetchData = useCallback(async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/auth?role=passenger');
-        return;
-      }
-
-      const [profileRes, walletRes, placesRes, historyRes, bookingsRes] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', user.id).single(),
-        supabase.from('wallets').select('*').eq('user_id', user.id).single(),
-        supabase.from('saved_places').select('*').eq('user_id', user.id).limit(2),
-        supabase.from('search_history').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(3),
-        supabase.from('bookings').select('*, rides(*, profiles(*))').eq('passenger_id', user.id).order('created_at', { ascending: false })
-      ]);
-
-      if (profileRes.data) setProfile(profileRes.data);
-      if (walletRes.data) setWallet(walletRes.data);
-      if (placesRes.data) setSavedPlaces(placesRes.data);
-      if (historyRes.data) setRecentSearches(historyRes.data);
-
-      if (bookingsRes.data) {
-        const bookings = bookingsRes.data as unknown as BookingWithRide[];
-        const now = new Date();
-        
-        // Active
-        const active = bookings.find(b => b.status === 'confirmed' && b.rides && (b.rides.status === 'active' || (b.rides.status === 'scheduled' && b.rides.driver_arrived)));
-        if (active) setActiveBooking(active);
-
-        // Upcoming
-        const upcoming = bookings.find(b => b.status === 'confirmed' && b.rides && b.rides.status === 'scheduled' && !b.rides.driver_arrived && new Date(b.rides.departure_time) > now);
-        if (upcoming) setUpcomingBooking(upcoming);
-
-        // Stats
-        const completed = bookings.filter(b => b.status === 'confirmed' && b.rides?.status === 'completed');
-        const spent = completed.reduce((sum, b) => sum + ((b.rides?.price_per_seat || 0) * b.seats_booked), 0);
-        setStats({ rides: completed.length, spent });
-      }
-
-    } catch (error) {
-      console.error('Data fetch error:', error);
-    }
-  }, [supabase, router]);
-
-  useEffect(() => {
-    const hour = new Date().getHours();
-    if (hour < 12) setGreeting('Good Morning');
-    else if (hour < 18) setGreeting('Good Afternoon');
-    else setGreeting('Good Evening');
-
-    fetchData();
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
-        setSuggestions([]);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [fetchData]);
-
-  useEffect(() => {
-    if (coords.pickup && coords.dropoff) {
-      getRoute(coords.pickup, coords.dropoff).then(path => {
-        if (path) setRoute(path);
-      });
-    }
-  }, [coords.pickup, coords.dropoff]);
-
-  const fetchSuggestions = async (input: string) => {
-    if (!input || input.length < 3) {
-      setSuggestions([]);
-      return;
-    }
-    setIsTyping(true);
-    try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(input)}&countrycodes=ng&limit=5`);
-      const data = await res.json();
-      setSuggestions(data);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsTyping(false);
-    }
-  };
-
-  const handleInputChange = (field: 'origin' | 'destination', value: string) => {
-    setQuery(prev => ({ ...prev, [field]: value }));
-    if (field === 'origin') setCoords(prev => ({ ...prev, pickup: undefined }));
-    else setCoords(prev => ({ ...prev, dropoff: undefined }));
-    setRoute(undefined);
-
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => { fetchSuggestions(value); }, 500);
-  };
-
-  const handleSuggestionSelect = (suggestion: Suggestion) => {
-    if (!activeField) return;
-    const newCoords = { lat: parseFloat(suggestion.lat), lng: parseFloat(suggestion.lon) };
-    const name = suggestion.display_name.split(',')[0];
-    
-    setQuery(prev => ({ ...prev, [activeField]: name }));
-    if (activeField === 'origin') setCoords(prev => ({ ...prev, pickup: newCoords }));
-    else setCoords(prev => ({ ...prev, dropoff: newCoords }));
-    
-    setSuggestions([]);
-  };
-
-  const handleSavedPlaceSelect = (place: SavedPlace) => {
-    const targetField = activeField || 'destination'; 
-    setQuery(prev => ({ ...prev, [targetField]: place.address }));
-    if (place.lat && place.lng) {
-      const newCoords = { lat: place.lat, lng: place.lng };
-      if (targetField === 'origin') setCoords(prev => ({ ...prev, pickup: newCoords }));
-      else setCoords(prev => ({ ...prev, dropoff: newCoords }));
-    }
-  };
-
-  const handleCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      addToast("Geolocation is not supported", 'error');
-      return;
-    }
-    setLoadingLocation(true);
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        try {
-          const address = await reverseGeocode(latitude, longitude);
-          setQuery(prev => ({ ...prev, origin: address }));
-          setCoords(prev => ({ ...prev, pickup: { lat: latitude, lng: longitude } }));
-        } catch {
-          addToast("Unable to fetch address", 'error');
-        } finally {
-          setLoadingLocation(false);
-        }
-      },
-      () => {
-        setLoadingLocation(false);
-        addToast("Permission denied", 'error');
-      }
-    );
-  };
+  const [coords, setCoords] = useState<{ pickup?: Coordinates; dropoff?: Coordinates }>({});
+  const [widgetQuery, setWidgetQuery] = useState({ origin: '', destination: '' });
+  
+  const bookingRef = useRef<HTMLDivElement>(null);
 
   const handleMapSelect = async (c: Coordinates) => {
-    const currentMode = mapMode;
-    setMapMode(null);
-    if (!currentMode) return;
-
-    if(currentMode === 'pickup') {
-        setCoords(prev => ({...prev, pickup: c}));
-        setQuery(prev => ({...prev, origin: 'Fetching address...'}));
-    } else {
-        setCoords(prev => ({...prev, dropoff: c}));
-        setQuery(prev => ({...prev, destination: 'Fetching address...'}));
-    }
-
-    try {
-      const addressName = await reverseGeocode(c.lat, c.lng);
-      setQuery(prev => ({...prev, [currentMode === 'pickup' ? 'origin' : 'destination']: addressName}));
-    } catch {
-      addToast("Failed to resolve address", 'error');
-    }
-  };
-
-  const scrollToBooking = () => {
-    bookingWidgetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  };
-
-  const handleSearchRedirect = () => {
-    if (!query.origin || !query.destination) {
-      addToast("Please enter both pickup and dropoff", 'error');
-      return;
-    }
-    const params = new URLSearchParams();
-    params.append('origin', query.origin);
-    params.append('destination', query.destination);
-    if (date) params.append('date', date);
-    if (time) params.append('time', time);
+    if (!mapMode) return;
     
-    router.push(`/search?${params.toString()}`);
+    // 1. Update Coords
+    const target = mapMode;
+    setCoords(prev => ({ ...prev, [target]: c }));
+    
+    // 2. Resolve Address for Widget
+    try {
+      const address = await reverseGeocode(c.lat, c.lng);
+      setWidgetQuery(prev => ({ 
+        ...prev, 
+        [target === 'pickup' ? 'origin' : 'destination']: address 
+      }));
+    } catch {
+      addToast("Could not resolve address. Pin set.", 'info');
+      setWidgetQuery(prev => ({ 
+        ...prev, 
+        [target === 'pickup' ? 'origin' : 'destination']: "Pinned Location" 
+      }));
+    }
+    
+    setMapMode(null);
   };
+
+  const scrollToBooking = () => bookingRef.current?.scrollIntoView({ behavior: 'smooth' });
+
+  if (loading) return null; // Or a skeleton loader handled by layout
 
   return (
     <div className="p-6 lg:p-10 space-y-8 pt-32 min-h-screen">
       
-      {/* Header & Stats */}
+      {/* 1. Welcome Section */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="md:col-span-2 bg-slate-900 text-white p-8 rounded-[2rem] relative overflow-hidden shadow-xl">
            <div className="relative z-10">
@@ -262,8 +85,8 @@ export default function PassengerDashboard() {
 
         <StatCard 
           label="Total Spent" 
-          value={`${APP_CONFIG.currency}${stats.spent.toLocaleString()}`} 
-          subValue={`${stats.rides} Trips taken`}
+          value={`${APP_CONFIG.currency}${stats.totalSpent.toLocaleString()}`} 
+          subValue={`${stats.totalRides} Trips taken`}
           icon={History} 
           color="white"
         />
@@ -271,131 +94,25 @@ export default function PassengerDashboard() {
 
       <div className="grid lg:grid-cols-3 gap-8">
         
-        {/* Left Column: Search & Favorites */}
-        <div className="lg:col-span-1 space-y-6 flex flex-col h-full">
-          
-          {/* Booking Widget */}
-          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 relative z-20" ref={wrapperRef}>
-             <div ref={bookingWidgetRef} className="scroll-mt-32"></div>
-             <h2 className="text-xl font-bold text-slate-900 mb-4">Book a Ride</h2>
-             <div className="relative">
-                <div className="absolute left-[19px] top-10 bottom-10 w-0.5 bg-gray-200 z-0"></div>
-                
-                {/* Origin */}
-                <div className="mb-4 relative z-10">
-                   <div className="absolute left-3 top-3.5 w-2.5 h-2.5 bg-black rounded-full shadow-[0_0_0_4px_white]"></div>
-                   <input 
-                     value={query.origin}
-                     onFocus={() => setActiveField('origin')}
-                     onChange={(e) => handleInputChange('origin', e.target.value)}
-                     placeholder="Pickup location"
-                     className={`w-full bg-slate-50 p-3 pl-10 rounded-xl font-medium text-slate-900 outline-none transition text-sm ${activeField === 'origin' ? 'ring-2 ring-black bg-white' : ''}`}
-                   />
-                   <div className="absolute right-2 top-2 flex gap-1">
-                     <button onClick={handleCurrentLocation} disabled={loadingLocation} className="p-1.5 text-slate-400 hover:text-black hover:bg-slate-200 rounded-lg transition" title="Use Current Location">
-                       {loadingLocation ? <Loader2 className="w-4 h-4 animate-spin"/> : <Navigation className="w-4 h-4" />}
-                     </button>
-                     <button onClick={() => setMapMode('pickup')} className="p-1.5 text-slate-400 hover:text-black hover:bg-slate-200 rounded-lg transition" title="Pick on map">
-                       <MapPin className="w-4 h-4"/>
-                     </button>
-                   </div>
-                </div>
-
-                {/* Destination */}
-                <div className="relative z-10 mb-4">
-                   <div className="absolute left-3 top-3.5 w-2.5 h-2.5 bg-slate-900 rounded-sm shadow-[0_0_0_4px_white]"></div>
-                   <input 
-                     value={query.destination}
-                     onFocus={() => setActiveField('destination')}
-                     onChange={(e) => handleInputChange('destination', e.target.value)}
-                     placeholder="Where to?"
-                     className={`w-full bg-slate-50 p-3 pl-10 rounded-xl font-medium text-slate-900 outline-none transition text-sm ${activeField === 'destination' ? 'ring-2 ring-black bg-white' : ''}`}
-                   />
-                   <button onClick={() => setMapMode('dropoff')} className="absolute right-3 top-2 p-1.5 text-slate-400 hover:text-black hover:bg-slate-200 rounded-lg transition" title="Pick on map">
-                     <MapPin className="w-4 h-4"/>
-                   </button>
-                </div>
-
-                {/* Date & Time */}
-                <div className="grid grid-cols-2 gap-3 mb-2">
-                   <div className="relative">
-                      <Calendar className="absolute top-3 left-3 w-4 h-4 text-slate-400"/>
-                      <input type="date" className="w-full bg-slate-50 p-3 pl-10 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-black" value={date} onChange={e => setDate(e.target.value)} />
-                   </div>
-                   <div className="relative">
-                      <Clock className="absolute top-3 left-3 w-4 h-4 text-slate-400"/>
-                      <input type="time" className="w-full bg-slate-50 p-3 pl-10 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-black" value={time} onChange={e => setTime(e.target.value)} />
-                   </div>
-                </div>
-
-                {/* Autocomplete Dropdown */}
-                {activeField && (suggestions.length > 0 || recentSearches.length > 0) && (
-                  <div className="absolute top-full left-0 w-full bg-white rounded-xl shadow-xl border border-gray-100 mt-2 overflow-hidden z-50 max-h-60 overflow-y-auto animate-fade-in">
-                    {suggestions.length > 0 ? (
-                      suggestions.map(item => (
-                        <div key={item.place_id} onClick={() => handleSuggestionSelect(item)} className="px-4 py-3 hover:bg-slate-50 cursor-pointer flex items-center gap-3 border-b border-gray-50 last:border-0">
-                          <MapPin className="w-3 h-3 text-slate-600 shrink-0"/>
-                          <p className="text-sm font-medium text-slate-700 truncate">{item.display_name}</p>
-                        </div>
-                      ))
-                    ) : !isTyping && (
-                      recentSearches.map(item => (
-                        <div key={item.id} onClick={() => { setQuery({ origin: item.origin_name || '', destination: item.destination_name }); setSuggestions([]); }} className="px-4 py-3 hover:bg-slate-50 cursor-pointer flex items-center gap-3 transition border-b border-gray-50 last:border-0">
-                          <History className="w-3 h-3 text-slate-400 shrink-0"/>
-                          <div>
-                            <p className="font-bold text-slate-800 text-sm truncate">{item.destination_name}</p>
-                            {item.origin_name && <p className="text-xs text-slate-400 truncate">From: {item.origin_name}</p>}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-             </div>
-             
-             <button 
-               onClick={handleSearchRedirect} 
-               disabled={!query.origin || !query.destination} 
-               className="w-full mt-4 bg-black disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white py-3.5 rounded-xl font-bold hover:bg-slate-800 transition shadow-lg flex items-center justify-center gap-2"
-             >
-               Find Rides <ArrowRight className="w-4 h-4" />
-             </button>
-          </div>
-
-          {/* Saved Places Widget */}
-          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex-1">
-            <div className="flex justify-between items-center mb-4">
-               <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wider">Favorites</h3>
-               <button onClick={() => router.push('/passenger/settings')} className="text-xs text-black hover:underline font-bold">Edit</button>
-            </div>
-            <div className="space-y-3">
-              {savedPlaces.length > 0 ? savedPlaces.map(place => (
-                <div key={place.id} onClick={() => handleSavedPlaceSelect(place)} className="flex items-center gap-4 p-3 hover:bg-slate-50 rounded-xl cursor-pointer transition group border border-transparent hover:border-slate-100">
-                  <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-600 group-hover:bg-white group-hover:shadow-sm">
-                    {place.label.toLowerCase() === 'home' ? <HomeIcon className="w-5 h-5" /> : <Briefcase className="w-5 h-5" />}
-                  </div>
-                  <div className="overflow-hidden">
-                    <div className="font-bold text-slate-900 text-sm truncate">{place.label}</div>
-                    <div className="text-xs text-slate-400 truncate">{place.address}</div>
-                  </div>
-                </div>
-              )) : (
-                <div className="text-center py-6">
-                  <p className="text-sm text-slate-400 italic mb-2">No saved places yet.</p>
-                  <button onClick={() => router.push('/passenger/settings')} className="text-xs font-bold text-blue-600 hover:underline">Add Home/Work</button>
-                </div>
-              )}
-            </div>
-          </div>
+        {/* 2. Left Column: Booking Logic */}
+        <div className="lg:col-span-1 space-y-6 flex flex-col h-full" ref={bookingRef}>
+          <BookingWidget 
+            savedPlaces={savedPlaces} 
+            recentSearches={recentSearches}
+            onMapPick={(mode) => setMapMode(mode)}
+            coords={coords}
+            setCoords={setCoords}
+            externalQuery={widgetQuery}
+            onLocationResolve={(field, val) => setWidgetQuery(prev => ({...prev, [field]: val}))}
+          />
         </div>
 
-        {/* Right Col: Interactive Map */}
+        {/* 3. Right Column: Map Visualization */}
         <div className="lg:col-span-2 flex flex-col gap-6 relative">
           <div className="bg-slate-100 rounded-3xl overflow-hidden shadow-inner border border-slate-200 relative h-[600px]">
              <LeafletMap 
                 pickup={coords.pickup}
                 dropoff={coords.dropoff}
-                routeCoordinates={route}
                 selectionMode={mapMode}
                 onPickupSelect={handleMapSelect}
                 onDropoffSelect={handleMapSelect}

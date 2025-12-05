@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import { Camera, Loader2, Upload } from 'lucide-react';
 import { useToast } from '@/components/ui/ToastProvider';
+import { cn } from '@/lib/utils';
 
 interface Props {
   uid: string;
@@ -11,9 +12,18 @@ interface Props {
   bucket?: 'avatars' | 'documents';
   className?: string;
   type?: 'avatar' | 'document';
+  variant?: 'default' | 'compact';
 }
 
-export default function ImageUpload({ uid, url, onUpload, bucket = 'avatars', className = '', type = 'avatar' }: Props) {
+export default function ImageUpload({ 
+  uid, 
+  url, 
+  onUpload, 
+  bucket = 'avatars', 
+  className = '', 
+  type = 'avatar',
+  variant = 'default' 
+}: Props) {
   const supabase = createClient();
   const { addToast } = useToast();
   const [uploading, setUploading] = useState(false);
@@ -38,7 +48,6 @@ export default function ImageUpload({ uid, url, onUpload, bucket = 'avatars', cl
         throw uploadError;
       }
 
-      // Get Public URL
       const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
       onUpload(data.publicUrl);
       addToast('Upload successful!', 'success');
@@ -50,7 +59,7 @@ export default function ImageUpload({ uid, url, onUpload, bucket = 'avatars', cl
   };
 
   return (
-    <div className={`relative group ${className}`}>
+    <div className={cn("relative group", type === 'document' ? "h-full w-full" : "w-full h-full", className)}>
       {type === 'avatar' ? (
         <div className="w-full h-full rounded-full overflow-hidden bg-slate-100 border-4 border-white shadow-lg relative">
           {url ? (
@@ -68,18 +77,23 @@ export default function ImageUpload({ uid, url, onUpload, bucket = 'avatars', cl
         </div>
       ) : (
         // Document Style
-        <label className="flex items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:bg-slate-50 transition">
+        <label className={cn(
+          "flex items-center justify-center w-full h-full border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:bg-slate-50 transition overflow-hidden",
+          variant === 'default' ? "min-h-[128px]" : "" // Default height only if not compact
+        )}>
            {uploading ? (
-             <Loader2 className="w-6 h-6 text-slate-400 animate-spin"/>
+             <Loader2 className="w-5 h-5 text-slate-400 animate-spin"/>
            ) : url ? (
-             <div className="relative w-full h-full p-2">
-                <img src={url} className="w-full h-full object-contain rounded-lg"/>
-                <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 hover:opacity-100 transition rounded-lg text-white font-bold text-xs">Change</div>
+             <div className="relative w-full h-full">
+                <img src={url} className="w-full h-full object-cover opacity-80 group-hover:opacity-40 transition"/>
+                <div className="absolute inset-0 flex items-center justify-center">
+                   <div className="bg-black/60 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Change</div>
+                </div>
              </div>
            ) : (
-             <div className="text-center">
-                <Upload className="w-6 h-6 text-slate-400 mx-auto mb-2"/>
-                <span className="text-xs text-slate-500 font-bold">Click to Upload</span>
+             <div className="text-center p-2">
+                <Upload className={cn("text-slate-400 mx-auto", variant === 'compact' ? "w-4 h-4" : "w-6 h-6 mb-2")}/>
+                {variant === 'default' && <span className="text-xs text-slate-500 font-bold block">Click to Upload</span>}
              </div>
            )}
            <input type="file" className="hidden" accept="image/*" onChange={handleUpload} disabled={uploading} />

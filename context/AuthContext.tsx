@@ -2,19 +2,18 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
-import { Profile, UserRole } from '@/types';
+import { Profile, UserRole, OnboardingStep } from '@/types';
 import { useRouter, usePathname } from 'next/navigation';
 import { User } from '@supabase/supabase-js';
-
-type OnboardingStatus = 'loading' | 'complete' | 'incomplete';
+import { AuthService } from '@/lib/services/auth.service';
 
 interface AuthContextType {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
   role: UserRole | null;
-  onboardingStatus: OnboardingStatus;
-  refreshProfile: () => Promise<void>;
+  onboardingStep: OnboardingStep;
+  refreshAuth: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -28,112 +27,77 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus>('loading');
+  const [onboardingStep, setOnboardingStep] = useState<OnboardingStep>('PROFILE_DETAILS');
 
-  // Logic to determine if a user has finished setting up their account
-  const checkOnboarding = (profileData: Profile | null) => {
-    if (!profileData) return 'incomplete';
-    
-    // 1. Basic Profile Check
-    if (!profileData.full_name || !profileData.phone_number) return 'incomplete';
+  const checkAndRedirect = async (currentUser: User, currentProfile: Profile | null) => {
+    if (!currentProfile) return;
 
-    // 2. Driver Specific Check
-    if (profileData.role === 'driver') {
-      // Drivers must have vehicle details to be considered "onboarded" initially
-      if (!profileData.vehicle_model || !profileData.vehicle_plate) return 'incomplete';
-    }
+    const step = await AuthService.getOnboardingStatus(currentUser.id, currentProfile.role);
+    setOnboardingStep(step);
 
-    return 'complete';
-  };
+    const isAuthPage = pathname?.startsWith('/auth');
+    const isOnboardingPage = pathname?.startsWith('/onboarding');
 
-  const fetchProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-      
-      if (!error && data) {
-        setProfile(data as Profile);
-        return data as Profile;
+    // 1. If not completed, force onboarding (unless on auth/onboarding pages)
+    if (step !== 'COMPLETED') {
+      if (!isOnboardingPage && !isAuthPage) {
+        router.replace('/onboarding');
       }
-    } catch (error) {
-      console.error('Error fetching profile:', error);
+    } 
+    // 2. If completed, but logic to prevent premature redirect from onboarding page
+    // We ONLY auto-redirect if they are NOT on the onboarding page (e.g. they landed on home)
+    else if (step === 'COMPLETED' && !isOnboardingPage && !isAuthPage) {
+        const dashboard = currentProfile.role === 'driver' ? '/driver' : '/passenger';
+        router.replace(dashboard);
     }
-    return null;
   };
 
-  const refreshProfile = async () => {
-    if (user) {
-      const data = await fetchProfile(user.id);
-      setOnboardingStatus(checkOnboarding(data));
+  const refreshAuth = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      setUser(session.user);
+      const profileData = await AuthService.getProfile(session.user.id);
+      setProfile(profileData);
+      await checkAndRedirect(session.user, profileData);
     }
   };
 
   useEffect(() => {
-    const initializeAuth = async () => {
+    const init = async () => {
       setLoading(true);
-      
-      // 1. Get Session
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session?.user) {
-        setUser(session.user);
-        const profileData = await fetchProfile(session.user.id);
-        const status = checkOnboarding(profileData);
-        setOnboardingStatus(status);
-
-        // Smart Redirect: Force onboarding if profile is incomplete
-        // We exclude /auth and /onboarding to prevent redirect loops
-        if (status === 'incomplete' && !pathname?.startsWith('/onboarding') && !pathname?.startsWith('/auth')) {
-           router.replace('/onboarding');
-        }
-      } else {
-        setUser(null);
-        setProfile(null);
-        setOnboardingStatus('incomplete');
-      }
-      
+      await refreshAuth();
       setLoading(false);
 
-      // 2. Listen for changes
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         if (session?.user) {
           setUser(session.user);
-          // Fetch profile if it's new or different
           if (!profile || profile.id !== session.user.id) {
-             const data = await fetchProfile(session.user.id);
-             setOnboardingStatus(checkOnboarding(data));
+             const p = await AuthService.getProfile(session.user.id);
+             setProfile(p);
+             await checkAndRedirect(session.user, p);
           }
         } else {
           setUser(null);
           setProfile(null);
-          setOnboardingStatus('incomplete');
         }
         setLoading(false);
       });
 
       return () => subscription.unsubscribe();
     };
-
-    initializeAuth();
-  }, [supabase, router, pathname]);
+    init();
+  }, [supabase, pathname]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    setUser(null);
+    setProfile(null);
     router.push('/auth');
   };
 
   return (
     <AuthContext.Provider value={{ 
-      user, 
-      profile, 
-      loading, 
-      role: profile?.role || null,
-      onboardingStatus,
-      refreshProfile,
-      signOut 
+      user, profile, loading, role: profile?.role || null, onboardingStep, refreshAuth, signOut 
     }}>
       {children}
     </AuthContext.Provider>
@@ -142,8 +106,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };

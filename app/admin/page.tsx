@@ -1,34 +1,22 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { createClient } from '@/lib/supabase';
-import { Shield, Users, AlertTriangle, Activity, Database, CheckCircle } from 'lucide-react';
+import { Shield, Users, AlertTriangle, Activity, Database, CheckCircle, Loader2 } from 'lucide-react';
+import { useAdminDashboard } from '@/hooks/useAdminDashboard';
 import UserCreateForm from '@/components/UserCreateForm';
 import UserList from '@/components/UserList';
 import StatCard from '@/components/ui/StatCard';
 
 export default function AdminDashboard() {
-  const supabase = createClient();
-  const [stats, setStats] = useState({ users: 0, rides: 0, pending: 0 });
+  const { stats, loading } = useAdminDashboard();
 
-  useEffect(() => {
-    const fetchStats = async () => {
-       const [u, r, p] = await Promise.all([
-          supabase.from('profiles').select('*', { count: 'exact', head: true }),
-          supabase.from('rides').select('*', { count: 'exact', head: true }),
-          supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'driver').eq('is_verified', false)
-       ]);
-       setStats({ users: u.count || 0, rides: r.count || 0, pending: p.count || 0 });
-    };
-    fetchStats();
-  }, []);
+  if (loading) return <div className="flex justify-center items-center h-[50vh]"><Loader2 className="w-8 h-8 animate-spin text-slate-300"/></div>;
 
   return (
     <div className="space-y-8">
        {/* Stats */}
        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <StatCard label="Total Users" value={stats.users.toString()} icon={Users} color="white" />
-          <StatCard label="Total Rides" value={stats.rides.toString()} icon={Activity} color="white" />
-          <StatCard label="Pending Drivers" value={stats.pending.toString()} icon={AlertTriangle} color={stats.pending > 0 ? "black" : "green"} />
+          <StatCard label="Total Users" value={stats.totalUsers.toString()} icon={Users} color="white" />
+          <StatCard label="Total Rides" value={stats.totalRides.toString()} icon={Activity} color="white" />
+          <StatCard label="Pending Drivers" value={stats.pendingDrivers.toString()} icon={AlertTriangle} color={stats.pendingDrivers > 0 ? "black" : "green"} />
        </div>
 
        <div className="grid lg:grid-cols-3 gap-8">

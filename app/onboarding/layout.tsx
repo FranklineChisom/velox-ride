@@ -8,11 +8,9 @@ export default function OnboardingLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    // Added pt-24 to ensure content clears the fixed header
+    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 pt-24 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center mb-8">
-        <div className="mx-auto h-12 w-12 bg-black text-white rounded-xl flex items-center justify-center font-bold text-xl shadow-xl">
-          V
-        </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-slate-900 tracking-tight">
           Welcome to Veluxeride
         </h2>
