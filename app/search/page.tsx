@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { getRoute, reverseGeocode } from '@/lib/osm';
 import { Coordinates, Suggestion } from '@/types';
 import dynamic from 'next/dynamic';
-import { MapPin, Loader2, ArrowLeft, Clock, X, Search, CreditCard, ChevronRight, Filter, AlertCircle, Users } from 'lucide-react';
+import { MapPin, Loader2, ArrowLeft, Clock, X, Search, CreditCard, ChevronRight, Filter, AlertCircle, Users, Calendar } from 'lucide-react';
 import { useToast } from '@/components/ui/ToastProvider';
 import { useSmartSearch } from '@/hooks/useSmartSearch';
 import RideResultCard from '@/components/search/RideResultCard';
@@ -19,6 +19,7 @@ function SearchContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { addToast } = useToast();
+  const wrapperRef = useRef<HTMLDivElement>(null); // Ref for click-outside detection
 
   const {
     query, setQuery, coords, setCoords, suggestions, setSuggestions,
@@ -38,6 +39,18 @@ function SearchContent() {
   const [mapMode, setMapMode] = useState<'pickup' | 'dropoff' | null>(null);
   const [activeField, setActiveField] = useState<'origin' | 'destination' | null>(null);
 
+  // Close suggestions on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setSuggestions([]);
+        setActiveField(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [setSuggestions]);
+
   useEffect(() => {
     const pUrl = searchParams.get('origin');
     const dUrl = searchParams.get('destination');
@@ -45,6 +58,8 @@ function SearchContent() {
     const timeUrl = searchParams.get('time');
     
     if (pUrl && dUrl) {
+      if (dateUrl) setDate(dateUrl);
+      if (timeUrl) setTime(timeUrl);
       performSearch(dateUrl || undefined, timeUrl || undefined, true);
     }
   }, []);
@@ -130,49 +145,86 @@ function SearchContent() {
            <h1 className="font-bold text-lg text-slate-900">Find a Ride</h1>
         </div>
 
-        <div className="p-5 bg-white shrink-0 space-y-4">
+        <div className="p-5 bg-white shrink-0 space-y-4" ref={wrapperRef}>
            <div className="bg-slate-50 p-2 rounded-2xl border border-slate-100 relative">
               <div className="absolute left-[23px] top-10 bottom-10 w-0.5 bg-gray-300 z-0"></div>
-              <div className="relative z-10 mb-2">
+              
+              {/* Pickup Input */}
+              <div className="relative z-20 mb-2">
                  <div className="absolute left-4 top-3.5 w-2 h-2 bg-black rounded-full ring-4 ring-slate-50"></div>
-                 <input value={query.origin} onFocus={() => setActiveField('origin')} onChange={(e) => handleInputChange('origin', e.target.value)} placeholder="Pickup Location" className="w-full bg-white p-3 pl-10 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-black/5 shadow-sm transition"/>
+                 <input 
+                   value={query.origin} 
+                   onFocus={() => setActiveField('origin')} 
+                   onChange={(e) => handleInputChange('origin', e.target.value)} 
+                   placeholder="Pickup Location" 
+                   className="w-full bg-white p-3 pl-10 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-black/5 shadow-sm transition"
+                 />
                  <button onClick={() => setMapMode('pickup')} className="absolute right-3 top-2.5 p-1 text-slate-400 hover:text-black transition"><MapPin className="w-4 h-4"/></button>
+
+                 {/* Suggestions for Origin */}
+                 {activeField === 'origin' && suggestions.length > 0 && (
+                    <div className="absolute top-full left-0 w-full bg-white rounded-xl shadow-xl border border-gray-100 mt-1 z-50 overflow-hidden animate-fade-in">
+                        <div className="py-1">
+                            {suggestions.map((item) => (
+                                <div key={item.place_id} onClick={() => handleSuggestionSelect(item)} className="px-4 py-2.5 hover:bg-slate-50 cursor-pointer flex items-center gap-3 border-b border-gray-50 last:border-0">
+                                    <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0"/>
+                                    <p className="text-xs font-bold text-slate-700 truncate">{item.display_name}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                 )}
               </div>
+
+              {/* Dropoff Input */}
               <div className="relative z-10">
                  <div className="absolute left-4 top-3.5 w-2 h-2 bg-slate-900 rounded-sm ring-4 ring-slate-50"></div>
-                 <input value={query.destination} onFocus={() => setActiveField('destination')} onChange={(e) => handleInputChange('destination', e.target.value)} placeholder="Where to?" className="w-full bg-white p-3 pl-10 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-black/5 shadow-sm transition"/>
+                 <input 
+                   value={query.destination} 
+                   onFocus={() => setActiveField('destination')} 
+                   onChange={(e) => handleInputChange('destination', e.target.value)} 
+                   placeholder="Where to?" 
+                   className="w-full bg-white p-3 pl-10 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-black/5 shadow-sm transition"
+                 />
                  <button onClick={() => setMapMode('dropoff')} className="absolute right-3 top-2.5 p-1 text-slate-400 hover:text-black transition"><MapPin className="w-4 h-4"/></button>
+                 
+                 {/* Suggestions for Destination */}
+                 {activeField === 'destination' && suggestions.length > 0 && (
+                    <div className="absolute top-full left-0 w-full bg-white rounded-xl shadow-xl border border-gray-100 mt-1 z-50 overflow-hidden animate-fade-in">
+                        <div className="py-1">
+                            {suggestions.map((item) => (
+                                <div key={item.place_id} onClick={() => handleSuggestionSelect(item)} className="px-4 py-2.5 hover:bg-slate-50 cursor-pointer flex items-center gap-3 border-b border-gray-50 last:border-0">
+                                    <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0"/>
+                                    <p className="text-xs font-bold text-slate-700 truncate">{item.display_name}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                 )}
               </div>
            </div>
 
-           <div className="grid grid-cols-3 gap-3">
-              <div className="relative col-span-2">
-                 <Clock className="absolute top-3 left-3 w-4 h-4 text-slate-400"/>
+           {/* Date, Time & Seats Group */}
+           <div className="grid grid-cols-2 gap-3">
+              <div className="relative">
+                 <Calendar className="absolute top-3 left-3 w-4 h-4 text-slate-400"/>
                  <input type="date" className="w-full bg-slate-50 border border-slate-100 p-2.5 pl-10 rounded-xl text-sm font-medium outline-none focus:border-black transition" value={date} onChange={e => setDate(e.target.value)} />
               </div>
               <div className="relative">
-                 <Users className="absolute top-3 left-3 w-4 h-4 text-slate-400"/>
-                 <select 
-                   className="w-full bg-slate-50 border border-slate-100 p-2.5 pl-9 rounded-xl text-sm font-medium outline-none focus:border-black transition appearance-none"
-                   value={passengerCount}
-                   onChange={(e) => setPassengerCount(Number(e.target.value))}
-                 >
-                   {[1,2,3,4].map(n => <option key={n} value={n}>{n} pass.</option>)}
-                 </select>
+                 <Clock className="absolute top-3 left-3 w-4 h-4 text-slate-400"/>
+                 <input type="time" className="w-full bg-slate-50 border border-slate-100 p-2.5 pl-10 rounded-xl text-sm font-medium outline-none focus:border-black transition" value={time} onChange={e => setTime(e.target.value)} />
               </div>
+           </div>
+           
+           <div className="relative">
+                 <Users className="absolute top-3 left-3 w-4 h-4 text-slate-400"/>
+                 <select className="w-full bg-slate-50 border border-slate-100 p-2.5 pl-10 rounded-xl text-sm font-medium outline-none focus:border-black transition appearance-none" value={passengerCount} onChange={(e) => setPassengerCount(Number(e.target.value))}>
+                   {[1,2,3,4].map(n => <option key={n} value={n}>{n} Passenger{n > 1 ? 's' : ''}</option>)}
+                 </select>
+                 <div className="absolute right-3 top-3 pointer-events-none"><ChevronRight className="w-4 h-4 text-slate-400 rotate-90"/></div>
            </div>
 
            <button onClick={() => performSearch(date, time)} className="w-full bg-black text-white py-3.5 rounded-xl font-bold hover:bg-slate-800 transition shadow-lg flex items-center justify-center gap-2">{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Search Rides'}</button>
-
-           {activeField && suggestions.length > 0 && (
-              <div className="absolute left-5 right-5 z-50 bg-white rounded-xl shadow-2xl border border-slate-100 mt-[-10px] overflow-hidden">
-                 {suggestions.map((item) => (
-                    <div key={item.place_id} onClick={() => handleSuggestionSelect(item)} className="px-4 py-3 hover:bg-slate-50 cursor-pointer flex items-center gap-3 border-b border-slate-50 last:border-0">
-                      <MapPin className="w-3 h-3 text-slate-400 shrink-0"/><p className="text-sm text-slate-700 truncate">{item.display_name}</p>
-                    </div>
-                 ))}
-              </div>
-           )}
         </div>
 
         <div className="flex-1 overflow-y-auto bg-slate-50 p-4 space-y-4">
