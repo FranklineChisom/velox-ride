@@ -10,7 +10,6 @@ import { UserRole } from '@/types';
 function AuthContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = createClient();
   
   const defaultRole = searchParams.get('role') === 'driver' ? 'driver' : 'passenger';
   const next = searchParams.get('next');
@@ -45,6 +44,9 @@ function AuthContent() {
     setSuccessMsg(null);
 
     try {
+      // Initialize client inside the handler to catch config errors immediately
+      const supabase = createClient();
+
       if (mode === 'signup') {
         const { error: signUpError } = await supabase.auth.signUp({
           email,
@@ -59,7 +61,6 @@ function AuthContent() {
         });
         if (signUpError) throw signUpError;
         
-        // Updated success message with email confirmation instruction
         setSuccessMsg('Account created successfully! Please check your email to confirm your account before logging in.');
         setMode('signin'); 
       } else {
@@ -72,7 +73,14 @@ function AuthContent() {
         }
       }
     } catch (err: any) {
-      setError(err.message || 'An unexpected error occurred');
+      console.error("Auth Error:", err);
+      if (err.message === 'Failed to fetch') {
+        setError('Connection failed. Please check your internet connection or disable ad-blockers.');
+      } else if (err.message.includes('Supabase configuration')) {
+        setError('System Error: Missing API configuration.');
+      } else {
+        setError(err.message || 'An unexpected error occurred');
+      }
     } finally {
       setLoading(false);
     }

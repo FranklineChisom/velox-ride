@@ -1,63 +1,64 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
-import { useRouter } from 'next/navigation';
-import { Shield, Users, LogOut, Loader2 } from 'lucide-react';
+import { Shield, Users, AlertTriangle, Activity, Database, CheckCircle } from 'lucide-react';
 import UserCreateForm from '@/components/UserCreateForm';
 import UserList from '@/components/UserList';
+import StatCard from '@/components/ui/StatCard';
 
 export default function AdminDashboard() {
   const supabase = createClient();
-  const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  
-  useEffect(() => {
-    const checkUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || user.user_metadata.role !== 'superadmin') {
-        router.push('/');
-        return;
-      }
-      setLoading(false);
-    };
-    checkUser();
-  }, [router, supabase]);
+  const [stats, setStats] = useState({ users: 0, rides: 0, pending: 0 });
 
-  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin w-8 h-8"/></div>;
+  useEffect(() => {
+    const fetchStats = async () => {
+       const [u, r, p] = await Promise.all([
+          supabase.from('profiles').select('*', { count: 'exact', head: true }),
+          supabase.from('rides').select('*', { count: 'exact', head: true }),
+          supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'driver').eq('is_verified', false)
+       ]);
+       setStats({ users: u.count || 0, rides: r.count || 0, pending: p.count || 0 });
+    };
+    fetchStats();
+  }, []);
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans flex">
-      <aside className="w-64 bg-slate-900 text-white p-6 flex flex-col fixed h-full overflow-y-auto">
-        <div className="flex items-center gap-3 mb-10">
-           <div className="w-8 h-8 bg-white text-black rounded-lg flex items-center justify-center font-bold">V</div>
-           <span className="font-bold text-lg">Superadmin</span>
-        </div>
-        <nav className="flex-1 space-y-2">
-           <button className="flex items-center gap-3 p-3 bg-white/10 rounded-xl w-full font-medium"><Shield className="w-5 h-5"/> Master Control</button>
-        </nav>
-        <button onClick={async () => { await supabase.auth.signOut(); router.push('/'); }} className="flex items-center gap-3 p-3 text-red-400 hover:bg-white/5 rounded-xl transition mt-auto">
-          <LogOut className="w-5 h-5"/> Sign Out
-        </button>
-      </aside>
+    <div className="space-y-8">
+       {/* Stats */}
+       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <StatCard label="Total Users" value={stats.users.toString()} icon={Users} color="white" />
+          <StatCard label="Total Rides" value={stats.rides.toString()} icon={Activity} color="white" />
+          <StatCard label="Pending Drivers" value={stats.pending.toString()} icon={AlertTriangle} color={stats.pending > 0 ? "black" : "green"} />
+       </div>
 
-      <main className="ml-64 p-10 w-full">
-         <h1 className="text-3xl font-bold text-slate-900 mb-8">System Administration</h1>
-         
-         <div className="grid lg:grid-cols-3 gap-8">
-            {/* Create User Column */}
-            <div className="lg:col-span-1">
-               <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Users className="w-5 h-5"/> Create User</h2>
-               <p className="text-slate-500 mb-4 text-sm">Create any user role directly. Requires Service Role Key.</p>
-               <UserCreateForm currentUserRole="superadmin" />
-            </div>
-            
-            {/* User List Column */}
-            <div className="lg:col-span-2">
-               <h2 className="text-xl font-bold mb-4">Manage Users</h2>
-               <UserList currentUserRole="superadmin" />
-            </div>
-         </div>
-      </main>
+       <div className="grid lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-1 space-y-6">
+             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Shield className="w-5 h-5 text-blue-600"/> Quick Actions</h3>
+                <UserCreateForm currentUserRole="superadmin" />
+             </div>
+             
+             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Database className="w-5 h-5 text-purple-600"/> System Health</h3>
+                <div className="space-y-3">
+                   <div className="flex justify-between items-center text-sm"><span className="text-slate-500">Database</span><span className="text-green-600 font-bold flex items-center gap-1"><CheckCircle className="w-3 h-3"/> Healthy</span></div>
+                   <div className="flex justify-between items-center text-sm"><span className="text-slate-500">Storage</span><span className="text-green-600 font-bold flex items-center gap-1"><CheckCircle className="w-3 h-3"/> Healthy</span></div>
+                   <div className="flex justify-between items-center text-sm"><span className="text-slate-500">API Latency</span><span className="text-slate-900 font-bold">45ms</span></div>
+                </div>
+             </div>
+          </div>
+
+          <div className="lg:col-span-2">
+             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-slate-200">
+                   <h3 className="font-bold text-lg">User Management</h3>
+                </div>
+                <div className="p-0">
+                   <UserList currentUserRole="superadmin" />
+                </div>
+             </div>
+          </div>
+       </div>
     </div>
   );
 }

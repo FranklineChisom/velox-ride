@@ -83,3 +83,36 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string> 
     return "Pinned Location";
   }
 }
+
+
+export interface RoutingStats {
+  distanceMeters: number;
+  durationSeconds: number;
+}
+
+/**
+ * Fetches real-world driving stats between two points.
+ * Uses OSRM to account for road networks, one-way streets, etc.
+ */
+export async function getDrivingStats(start: Coordinates, end: Coordinates): Promise<RoutingStats | null> {
+  try {
+    // OSRM Table API is better for matrices, but Route is fine for 1-to-1
+    const url = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=false`;
+    
+    const response = await fetch(url);
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    
+    if (data.routes && data.routes.length > 0) {
+      return {
+        distanceMeters: data.routes[0].distance,
+        durationSeconds: data.routes[0].duration
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting driving stats:', error);
+    return null;
+  }
+}

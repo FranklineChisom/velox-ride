@@ -1,5 +1,4 @@
 'use client';
-
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
@@ -7,11 +6,14 @@ import { createClient } from '@/lib/supabase';
 import { APP_CONFIG } from '@/lib/constants';
 import { getRoute, reverseGeocode } from '@/lib/osm';
 import { useToast } from '@/components/ui/ToastProvider';
-import { Suggestion, SearchHistoryItem, Coordinates, SavedPlace, Wallet, Profile } from '@/types';
+import { Suggestion, SearchHistoryItem, Coordinates, SavedPlace, Wallet, Profile, BookingWithRide } from '@/types';
 import { 
   MapPin, Home as HomeIcon, Briefcase, User, Star, 
-  ArrowRight, Loader2, Navigation, History, X 
+  ArrowRight, Loader2, Navigation, History, X, Calendar, Clock, ArrowDown
 } from 'lucide-react';
+import Link from 'next/link';
+import StatCard from '@/components/ui/StatCard';
+import { format } from 'date-fns';
 
 const LeafletMap = dynamic(() => import('@/components/Map'), { 
   ssr: false,
@@ -22,7 +24,7 @@ const LeafletMap = dynamic(() => import('@/components/Map'), {
   )
 });
 
-export default function PassengerHome() {
+export default function PassengerDashboard() {
   const supabase = createClient();
   const router = useRouter();
   const { addToast } = useToast();
@@ -33,9 +35,14 @@ export default function PassengerHome() {
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
   const [recentSearches, setRecentSearches] = useState<SearchHistoryItem[]>([]);
   const [greeting, setGreeting] = useState('Welcome');
+  const [activeBooking, setActiveBooking] = useState<BookingWithRide | null>(null);
+  const [upcomingBooking, setUpcomingBooking] = useState<BookingWithRide | null>(null);
+  const [stats, setStats] = useState({ rides: 0, spent: 0 });
 
   // Search & Map State
   const [query, setQuery] = useState({ origin: '', destination: '' });
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('');
   const [coords, setCoords] = useState<{ pickup?: Coordinates; dropoff?: Coordinates }>({});
   const [mapMode, setMapMode] = useState<'pickup' | 'dropoff' | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -46,6 +53,7 @@ export default function PassengerHome() {
 
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const bookingWidgetRef = useRef<HTMLDivElement>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -55,23 +63,39 @@ export default function PassengerHome() {
         return;
       }
 
-      // Fetch user profile data
-      const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-      if (profileData) setProfile(profileData);
-
-      // Parallel fetch for dashboard widgets
-      const [walletRes, placesRes, historyRes] = await Promise.all([
+      const [profileRes, walletRes, placesRes, historyRes, bookingsRes] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', user.id).single(),
         supabase.from('wallets').select('*').eq('user_id', user.id).single(),
         supabase.from('saved_places').select('*').eq('user_id', user.id).limit(2),
-        supabase.from('search_history').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(3)
+        supabase.from('search_history').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(3),
+        supabase.from('bookings').select('*, rides(*, profiles(*))').eq('passenger_id', user.id).order('created_at', { ascending: false })
       ]);
 
+      if (profileRes.data) setProfile(profileRes.data);
       if (walletRes.data) setWallet(walletRes.data);
       if (placesRes.data) setSavedPlaces(placesRes.data);
       if (historyRes.data) setRecentSearches(historyRes.data);
+
+      if (bookingsRes.data) {
+        const bookings = bookingsRes.data as unknown as BookingWithRide[];
+        const now = new Date();
+        
+        // Active
+        const active = bookings.find(b => b.status === 'confirmed' && b.rides && (b.rides.status === 'active' || (b.rides.status === 'scheduled' && b.rides.driver_arrived)));
+        if (active) setActiveBooking(active);
+
+        // Upcoming
+        const upcoming = bookings.find(b => b.status === 'confirmed' && b.rides && b.rides.status === 'scheduled' && !b.rides.driver_arrived && new Date(b.rides.departure_time) > now);
+        if (upcoming) setUpcomingBooking(upcoming);
+
+        // Stats
+        const completed = bookings.filter(b => b.status === 'confirmed' && b.rides?.status === 'completed');
+        const spent = completed.reduce((sum, b) => sum + ((b.rides?.price_per_seat || 0) * b.seats_booked), 0);
+        setStats({ rides: completed.length, spent });
+      }
+
     } catch (error) {
       console.error('Data fetch error:', error);
-      // Silent fail for UI smoothness, or use toast sparingly
     }
   }, [supabase, router]);
 
@@ -119,10 +143,9 @@ export default function PassengerHome() {
 
   const handleInputChange = (field: 'origin' | 'destination', value: string) => {
     setQuery(prev => ({ ...prev, [field]: value }));
-    // Clear the coordinate for this field if user is typing to avoid mismatched map state
     if (field === 'origin') setCoords(prev => ({ ...prev, pickup: undefined }));
     else setCoords(prev => ({ ...prev, dropoff: undefined }));
-    setRoute(undefined); // Reset route when typing
+    setRoute(undefined);
 
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => { fetchSuggestions(value); }, 500);
@@ -140,17 +163,6 @@ export default function PassengerHome() {
     setSuggestions([]);
   };
 
-  const handleHistorySelect = (item: SearchHistoryItem) => {
-    setQuery({ origin: item.origin_name || '', destination: item.destination_name });
-    if(item.origin_lat && item.origin_lng && item.destination_lat && item.destination_lng){
-        setCoords({
-            pickup: { lat: item.origin_lat, lng: item.origin_lng },
-            dropoff: { lat: item.destination_lat, lng: item.destination_lng }
-        });
-    }
-    setSuggestions([]);
-  };
-
   const handleSavedPlaceSelect = (place: SavedPlace) => {
     const targetField = activeField || 'destination'; 
     setQuery(prev => ({ ...prev, [targetField]: place.address }));
@@ -163,7 +175,7 @@ export default function PassengerHome() {
 
   const handleCurrentLocation = () => {
     if (!navigator.geolocation) {
-      addToast("Geolocation is not supported by your browser", 'error');
+      addToast("Geolocation is not supported", 'error');
       return;
     }
     setLoadingLocation(true);
@@ -175,14 +187,14 @@ export default function PassengerHome() {
           setQuery(prev => ({ ...prev, origin: address }));
           setCoords(prev => ({ ...prev, pickup: { lat: latitude, lng: longitude } }));
         } catch {
-          addToast("Unable to fetch address details", 'error');
+          addToast("Unable to fetch address", 'error');
         } finally {
           setLoadingLocation(false);
         }
       },
       () => {
         setLoadingLocation(false);
-        addToast("Permission denied or location unavailable", 'error');
+        addToast("Permission denied", 'error');
       }
     );
   };
@@ -204,45 +216,58 @@ export default function PassengerHome() {
       const addressName = await reverseGeocode(c.lat, c.lng);
       setQuery(prev => ({...prev, [currentMode === 'pickup' ? 'origin' : 'destination']: addressName}));
     } catch {
-      addToast("Failed to resolve address from map", 'error');
+      addToast("Failed to resolve address", 'error');
     }
+  };
+
+  const scrollToBooking = () => {
+    bookingWidgetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
   const handleSearchRedirect = () => {
     if (!query.origin || !query.destination) {
-      addToast("Please enter both pickup and dropoff locations", 'error');
+      addToast("Please enter both pickup and dropoff", 'error');
       return;
     }
     const params = new URLSearchParams();
     params.append('origin', query.origin);
     params.append('destination', query.destination);
+    if (date) params.append('date', date);
+    if (time) params.append('time', time);
+    
     router.push(`/search?${params.toString()}`);
   };
 
   return (
     <div className="p-6 lg:p-10 space-y-8 pt-32 min-h-screen">
       
-      {/* Header */}
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-slate-900">
-            {greeting}, {profile?.full_name?.split(' ')[0] || 'Traveler'}
-          </h1>
-          <p className="text-slate-500 mt-1 text-sm md:text-base">Ready for your next journey?</p>
+      {/* Header & Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="md:col-span-2 bg-slate-900 text-white p-8 rounded-[2rem] relative overflow-hidden shadow-xl">
+           <div className="relative z-10">
+              <h1 className="text-3xl font-bold mb-2">{greeting}, {profile?.full_name?.split(' ')[0] || 'Traveler'}</h1>
+              <p className="text-slate-400 mb-8">Ready for your next journey?</p>
+              
+              <div className="flex gap-4">
+                 <button onClick={scrollToBooking} className="bg-white text-black px-6 py-3 rounded-xl font-bold hover:bg-slate-200 transition flex items-center gap-2">
+                    Book a Ride <ArrowDown className="w-4 h-4"/>
+                 </button>
+                 <Link href="/passenger/wallet" className="bg-slate-800 text-white px-6 py-3 rounded-xl font-bold hover:bg-slate-700 transition">
+                    Add Funds
+                 </Link>
+              </div>
+           </div>
+           <div className="absolute right-0 bottom-0 w-48 h-48 bg-blue-600/20 rounded-full blur-3xl -mr-10 -mb-10"></div>
         </div>
-        <div className="flex items-center gap-4 bg-white p-2 pr-6 rounded-full border border-slate-100 shadow-sm w-fit hidden md:flex">
-          <div className="w-10 h-10 bg-slate-900 text-white rounded-full flex items-center justify-center">
-            {profile?.avatar_url ? <img src={profile.avatar_url} alt="Profile" className="w-full h-full rounded-full object-cover"/> : <User className="w-5 h-5" />}
-          </div>
-          <div>
-            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Passenger</div>
-            <div className="flex items-center gap-1 font-bold text-sm">
-              <Star className="w-3 h-3 text-yellow-400 fill-current" />
-              <span>4.9</span>
-            </div>
-          </div>
-        </div>
-      </header>
+
+        <StatCard 
+          label="Total Spent" 
+          value={`${APP_CONFIG.currency}${stats.spent.toLocaleString()}`} 
+          subValue={`${stats.rides} Trips taken`}
+          icon={History} 
+          color="white"
+        />
+      </div>
 
       <div className="grid lg:grid-cols-3 gap-8">
         
@@ -251,6 +276,7 @@ export default function PassengerHome() {
           
           {/* Booking Widget */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 relative z-20" ref={wrapperRef}>
+             <div ref={bookingWidgetRef} className="scroll-mt-32"></div>
              <h2 className="text-xl font-bold text-slate-900 mb-4">Book a Ride</h2>
              <div className="relative">
                 <div className="absolute left-[19px] top-10 bottom-10 w-0.5 bg-gray-200 z-0"></div>
@@ -266,26 +292,17 @@ export default function PassengerHome() {
                      className={`w-full bg-slate-50 p-3 pl-10 rounded-xl font-medium text-slate-900 outline-none transition text-sm ${activeField === 'origin' ? 'ring-2 ring-black bg-white' : ''}`}
                    />
                    <div className="absolute right-2 top-2 flex gap-1">
-                     <button 
-                       onClick={handleCurrentLocation} 
-                       disabled={loadingLocation}
-                       className="p-1.5 text-slate-400 hover:text-black hover:bg-slate-200 rounded-lg transition"
-                       title="Use Current Location"
-                     >
+                     <button onClick={handleCurrentLocation} disabled={loadingLocation} className="p-1.5 text-slate-400 hover:text-black hover:bg-slate-200 rounded-lg transition" title="Use Current Location">
                        {loadingLocation ? <Loader2 className="w-4 h-4 animate-spin"/> : <Navigation className="w-4 h-4" />}
                      </button>
-                     <button 
-                       onClick={() => setMapMode('pickup')} 
-                       className="p-1.5 text-slate-400 hover:text-black hover:bg-slate-200 rounded-lg transition"
-                       title="Pick on map"
-                     >
+                     <button onClick={() => setMapMode('pickup')} className="p-1.5 text-slate-400 hover:text-black hover:bg-slate-200 rounded-lg transition" title="Pick on map">
                        <MapPin className="w-4 h-4"/>
                      </button>
                    </div>
                 </div>
 
                 {/* Destination */}
-                <div className="relative z-10">
+                <div className="relative z-10 mb-4">
                    <div className="absolute left-3 top-3.5 w-2.5 h-2.5 bg-slate-900 rounded-sm shadow-[0_0_0_4px_white]"></div>
                    <input 
                      value={query.destination}
@@ -294,13 +311,21 @@ export default function PassengerHome() {
                      placeholder="Where to?"
                      className={`w-full bg-slate-50 p-3 pl-10 rounded-xl font-medium text-slate-900 outline-none transition text-sm ${activeField === 'destination' ? 'ring-2 ring-black bg-white' : ''}`}
                    />
-                   <button 
-                     onClick={() => setMapMode('dropoff')} 
-                     className="absolute right-3 top-2 p-1.5 text-slate-400 hover:text-black hover:bg-slate-200 rounded-lg transition"
-                     title="Pick on map"
-                   >
+                   <button onClick={() => setMapMode('dropoff')} className="absolute right-3 top-2 p-1.5 text-slate-400 hover:text-black hover:bg-slate-200 rounded-lg transition" title="Pick on map">
                      <MapPin className="w-4 h-4"/>
                    </button>
+                </div>
+
+                {/* Date & Time */}
+                <div className="grid grid-cols-2 gap-3 mb-2">
+                   <div className="relative">
+                      <Calendar className="absolute top-3 left-3 w-4 h-4 text-slate-400"/>
+                      <input type="date" className="w-full bg-slate-50 p-3 pl-10 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-black" value={date} onChange={e => setDate(e.target.value)} />
+                   </div>
+                   <div className="relative">
+                      <Clock className="absolute top-3 left-3 w-4 h-4 text-slate-400"/>
+                      <input type="time" className="w-full bg-slate-50 p-3 pl-10 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-black" value={time} onChange={e => setTime(e.target.value)} />
+                   </div>
                 </div>
 
                 {/* Autocomplete Dropdown */}
@@ -315,7 +340,7 @@ export default function PassengerHome() {
                       ))
                     ) : !isTyping && (
                       recentSearches.map(item => (
-                        <div key={item.id} onClick={() => handleHistorySelect(item)} className="px-4 py-3 hover:bg-slate-50 cursor-pointer flex items-center gap-3 transition border-b border-gray-50 last:border-0">
+                        <div key={item.id} onClick={() => { setQuery({ origin: item.origin_name || '', destination: item.destination_name }); setSuggestions([]); }} className="px-4 py-3 hover:bg-slate-50 cursor-pointer flex items-center gap-3 transition border-b border-gray-50 last:border-0">
                           <History className="w-3 h-3 text-slate-400 shrink-0"/>
                           <div>
                             <p className="font-bold text-slate-800 text-sm truncate">{item.destination_name}</p>
@@ -343,14 +368,9 @@ export default function PassengerHome() {
                <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wider">Favorites</h3>
                <button onClick={() => router.push('/passenger/settings')} className="text-xs text-black hover:underline font-bold">Edit</button>
             </div>
-            
             <div className="space-y-3">
               {savedPlaces.length > 0 ? savedPlaces.map(place => (
-                <div 
-                  key={place.id} 
-                  onClick={() => handleSavedPlaceSelect(place)}
-                  className="flex items-center gap-4 p-3 hover:bg-slate-50 rounded-xl cursor-pointer transition group border border-transparent hover:border-slate-100"
-                >
+                <div key={place.id} onClick={() => handleSavedPlaceSelect(place)} className="flex items-center gap-4 p-3 hover:bg-slate-50 rounded-xl cursor-pointer transition group border border-transparent hover:border-slate-100">
                   <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-600 group-hover:bg-white group-hover:shadow-sm">
                     {place.label.toLowerCase() === 'home' ? <HomeIcon className="w-5 h-5" /> : <Briefcase className="w-5 h-5" />}
                   </div>
@@ -384,12 +404,7 @@ export default function PassengerHome() {
              {mapMode && (
                 <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[1000] bg-black text-white px-6 py-2.5 rounded-full font-bold shadow-xl animate-bounce flex items-center gap-3">
                   <span>Tap map to set {mapMode === 'pickup' ? 'Pickup' : 'Dropoff'}</span>
-                  <button 
-                    onClick={() => setMapMode(null)} 
-                    className="bg-white/20 rounded-full p-1 hover:bg-white/30 transition"
-                  >
-                    <X className="w-3 h-3"/>
-                  </button>
+                  <button onClick={() => setMapMode(null)} className="bg-white/20 rounded-full p-1 hover:bg-white/30 transition"><X className="w-3 h-3"/></button>
                 </div>
              )}
 
