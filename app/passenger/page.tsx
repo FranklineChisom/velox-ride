@@ -3,14 +3,16 @@ import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { 
-  ShieldCheck, Car, Briefcase, Home, Clock, Star, Gift, ChevronRight, Navigation 
+  Briefcase, Home, Clock, Star, Gift, ChevronRight, Navigation, 
+  ShieldCheck, CloudRain, Zap, MapPin
 } from 'lucide-react';
 import { APP_CONFIG } from '@/lib/constants';
 import { usePassengerDashboard } from '@/hooks/usePassengerDashboard';
-import { reverseGeocode } from '@/lib/osm';
+import { reverseGeocode, getRoute } from '@/lib/osm';
 import { useToast } from '@/components/ui/ToastProvider';
 import { Coordinates } from '@/types';
 import { format } from 'date-fns';
+import { useRouter } from 'next/navigation';
 
 // Components
 import BookingWidget from '@/components/passenger/BookingWidget';
@@ -22,18 +24,42 @@ const LeafletMap = dynamic(() => import('@/components/Map'), {
 
 export default function PassengerDashboard() {
   const { 
-    loading, profile, wallet, stats, greeting, savedPlaces, recentSearches, activeBooking, upcomingBooking 
+    loading, profile, wallet, greeting, savedPlaces, recentSearches, activeBooking, refresh 
   } = usePassengerDashboard();
   
   const { addToast } = useToast();
+  const router = useRouter();
   
   // Map State
   const [mapMode, setMapMode] = useState<'pickup' | 'dropoff' | null>(null);
   const [coords, setCoords] = useState<{ pickup?: Coordinates; dropoff?: Coordinates }>({});
   const [widgetQuery, setWidgetQuery] = useState({ origin: '', destination: '' });
   const [ghostDrivers, setGhostDrivers] = useState<Coordinates[]>([]);
+  const [routeCoordinates, setRouteCoordinates] = useState<[number, number][] | undefined>(undefined);
 
-  // 1. Ghost Drivers Logic (Simulate Liquidity)
+  // Context State
+  const [commuteContext, setCommuteContext] = useState<{ label: string, time: string, traffic: 'light' | 'heavy' } | null>(null);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // 1. Commute Intelligence (Simulated)
+  useEffect(() => {
+    const hour = new Date().getHours();
+    const isMorning = hour < 12;
+    const targetLabel = isMorning ? 'work' : 'home';
+    const place = savedPlaces.find(p => p.label.toLowerCase() === targetLabel);
+
+    if (place) {
+        // In a real app, we'd fetch real traffic data here
+        setCommuteContext({
+            label: targetLabel === 'work' ? 'Work' : 'Home',
+            time: isMorning ? '25 mins' : '45 mins', // Simulated traffic difference
+            traffic: isMorning ? 'light' : 'heavy'
+        });
+    }
+  }, [savedPlaces]);
+
+  // 2. Ghost Drivers
   useEffect(() => {
     const center = APP_CONFIG.defaultCenter;
     const ghosts = Array.from({ length: 5 }).map(() => ({
@@ -48,11 +74,22 @@ export default function PassengerDashboard() {
         lng: g.lng + (Math.random() - 0.5) * 0.0005
       })));
     }, 3000);
-
     return () => clearInterval(interval);
   }, []);
 
-  // 2. Handle Shortcuts (Home/Work)
+  // 3. Route Calculation
+  useEffect(() => {
+    const fetchRoute = async () => {
+        if (coords.pickup && coords.dropoff) {
+            const path = await getRoute(coords.pickup, coords.dropoff);
+            if (path) setRouteCoordinates(path);
+        } else {
+            setRouteCoordinates(undefined);
+        }
+    };
+    fetchRoute();
+  }, [coords.pickup, coords.dropoff]);
+
   const handleShortcut = (type: 'home' | 'work') => {
     const place = savedPlaces.find(p => p.label.toLowerCase() === type);
     if (place) {
@@ -61,7 +98,13 @@ export default function PassengerDashboard() {
         addToast(`Destination set to ${type}`, 'success');
     } else {
         addToast(`No ${type} address saved. Add it in settings.`, 'info');
+        router.push('/passenger/settings');
     }
+  };
+
+  const handleRepeatRide = (item: any) => {
+      setWidgetQuery({ origin: item.origin_name || 'Current Location', destination: item.destination_name });
+      addToast('Locations pre-filled', 'info');
   };
 
   const handleMapSelect = async (c: Coordinates) => {
@@ -70,20 +113,14 @@ export default function PassengerDashboard() {
     setCoords(prev => ({ ...prev, [target]: c }));
     try {
       const address = await reverseGeocode(c.lat, c.lng);
-      setWidgetQuery(prev => ({ 
-        ...prev, 
-        [target === 'pickup' ? 'origin' : 'destination']: address 
-      }));
+      setWidgetQuery(prev => ({ ...prev, [target === 'pickup' ? 'origin' : 'destination']: address }));
     } catch {
-      setWidgetQuery(prev => ({ 
-        ...prev, 
-        [target === 'pickup' ? 'origin' : 'destination']: "Pinned Location" 
-      }));
+      setWidgetQuery(prev => ({ ...prev, [target === 'pickup' ? 'origin' : 'destination']: "Pinned Location" }));
     }
     setMapMode(null);
   };
 
-  if (loading) return null;
+  if (loading) return <div className="h-screen w-full bg-white"></div>;
 
   return (
     <div className="h-[calc(100vh-80px)] relative overflow-hidden flex flex-col lg:flex-row">
@@ -93,17 +130,13 @@ export default function PassengerDashboard() {
          <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide">
             
             {/* Header */}
-            <div className="flex justify-between items-start">
+            <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900">{greeting}, {profile?.full_name?.split(' ')[0]}</h1>
-                    <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">
-                        <ShieldCheck className="w-3 h-3 text-green-600"/>
-                        <span>Verified Account</span>
-                    </div>
+                    <h1 className="text-2xl font-bold text-slate-900">Good Morning, {profile?.full_name?.split(' ')[0]}</h1>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">Ready to move?</p>
                 </div>
-                {/* Wallet Pill */}
-                <Link href="/passenger/wallet" className="bg-slate-100 px-3 py-1.5 rounded-full flex items-center gap-2 hover:bg-slate-200 transition">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <Link href="/passenger/wallet" className="bg-slate-100 px-3 py-1.5 rounded-full flex items-center gap-2 hover:bg-slate-200 transition group">
+                    <div className="w-2 h-2 bg-green-500 rounded-full group-hover:animate-pulse"></div>
                     <span className="text-xs font-bold text-slate-900">{wallet ? `${APP_CONFIG.currency}${Number(wallet.balance).toLocaleString()}` : '...'}</span>
                 </Link>
             </div>
@@ -132,6 +165,25 @@ export default function PassengerDashboard() {
                 </div>
             )}
 
+            {/* Commute Insight Card (Only if no active ride) */}
+            {!activeBooking && commuteContext && (
+                <div onClick={() => handleShortcut(commuteContext.label.toLowerCase() as 'home'|'work')} className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-2xl border border-blue-100 cursor-pointer hover:shadow-md transition flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-white p-2 rounded-xl text-blue-600 shadow-sm">
+                           {commuteContext.label === 'Work' ? <Briefcase className="w-4 h-4"/> : <Home className="w-4 h-4"/>}
+                        </div>
+                        <div>
+                            <p className="text-xs font-bold text-blue-900 uppercase tracking-wider">Commute to {commuteContext.label}</p>
+                            <p className="text-sm font-bold text-slate-700 flex items-center gap-1">
+                                {commuteContext.traffic === 'heavy' ? <span className="text-red-500">Heavy Traffic</span> : <span className="text-green-600">Clear Road</span>} 
+                                • {commuteContext.time}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="bg-white p-1.5 rounded-full text-slate-400"><ChevronRight className="w-4 h-4"/></div>
+                </div>
+            )}
+
             {/* Booking Widget */}
             <BookingWidget 
               savedPlaces={savedPlaces} 
@@ -146,45 +198,47 @@ export default function PassengerDashboard() {
 
             {/* Quick Access Grid */}
             <div>
-                <p className="text-xs font-bold text-slate-400 uppercase mb-3 px-1">Quick Access</p>
+                <p className="text-xs font-bold text-slate-400 uppercase mb-3 px-1">Saved Places</p>
                 <div className="grid grid-cols-2 gap-3">
-                    <button onClick={() => handleShortcut('home')} className="bg-blue-50 p-4 rounded-2xl flex flex-col items-start gap-3 hover:bg-blue-100 transition border border-blue-100 text-left">
-                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600"><Home className="w-4 h-4"/></div>
+                    <button onClick={() => handleShortcut('home')} className="bg-slate-50 p-4 rounded-2xl flex flex-col items-start gap-3 hover:bg-slate-100 transition border border-slate-100 text-left group">
+                        <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-slate-600 shadow-sm group-hover:scale-110 transition"><Home className="w-4 h-4"/></div>
                         <div>
-                            <span className="font-bold text-blue-900 text-sm block">Home</span>
-                            <span className="text-[10px] text-blue-600/80 line-clamp-1">{savedPlaces.find(p => p.label.toLowerCase() === 'home')?.address || 'Tap to save'}</span>
+                            <span className="font-bold text-slate-900 text-sm block">Home</span>
+                            <span className="text-[10px] text-slate-500 line-clamp-1">{savedPlaces.find(p => p.label.toLowerCase() === 'home')?.address || 'Set Address'}</span>
                         </div>
                     </button>
-                    <button onClick={() => handleShortcut('work')} className="bg-orange-50 p-4 rounded-2xl flex flex-col items-start gap-3 hover:bg-orange-100 transition border border-orange-100 text-left">
-                        <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center text-orange-600"><Briefcase className="w-4 h-4"/></div>
+                    <button onClick={() => handleShortcut('work')} className="bg-slate-50 p-4 rounded-2xl flex flex-col items-start gap-3 hover:bg-slate-100 transition border border-slate-100 text-left group">
+                        <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-slate-600 shadow-sm group-hover:scale-110 transition"><Briefcase className="w-4 h-4"/></div>
                         <div>
-                            <span className="font-bold text-orange-900 text-sm block">Work</span>
-                            <span className="text-[10px] text-orange-600/80 line-clamp-1">{savedPlaces.find(p => p.label.toLowerCase() === 'work')?.address || 'Tap to save'}</span>
+                            <span className="font-bold text-slate-900 text-sm block">Work</span>
+                            <span className="text-[10px] text-slate-500 line-clamp-1">{savedPlaces.find(p => p.label.toLowerCase() === 'work')?.address || 'Set Address'}</span>
                         </div>
                     </button>
                 </div>
             </div>
 
-            {/* Recent Places */}
+            {/* Recent / Repeat Rides */}
             {recentSearches.length > 0 && (
                 <div className="space-y-3">
-                    <p className="text-xs font-bold text-slate-400 uppercase px-1">Recent Destinations</p>
+                    <p className="text-xs font-bold text-slate-400 uppercase px-1">Recent Trips</p>
                     <div className="space-y-1">
                         {recentSearches.slice(0, 3).map((item) => (
                             <button 
                                 key={item.id}
-                                onClick={() => {
-                                    setWidgetQuery(prev => ({ ...prev, destination: item.destination_name }));
-                                    // Normally we would also need coords, but widget handles text search too
-                                }}
-                                className="w-full flex items-center gap-4 p-3 hover:bg-slate-50 rounded-xl transition group text-left"
+                                onClick={() => handleRepeatRide(item)}
+                                className="w-full flex items-center gap-4 p-3 hover:bg-slate-50 rounded-xl transition group text-left border border-transparent hover:border-slate-100"
                             >
-                                <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 group-hover:bg-black group-hover:text-white transition">
+                                <div className="w-9 h-9 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 group-hover:bg-black group-hover:text-white transition shrink-0">
                                     <Clock className="w-4 h-4"/>
                                 </div>
-                                <div className="flex-1 border-b border-slate-50 pb-2 group-hover:border-transparent transition">
-                                    <p className="font-bold text-slate-700 text-sm truncate">{item.destination_name}</p>
-                                    <p className="text-[10px] text-slate-400">{format(new Date(item.created_at), 'MMM dd')}</p>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-0.5">
+                                        <p className="font-bold text-slate-900 text-sm truncate">{item.destination_name}</p>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 truncate">From: {item.origin_name || 'Current Location'}</p>
+                                </div>
+                                <div className="p-2 bg-slate-50 rounded-full opacity-0 group-hover:opacity-100 transition">
+                                    <ChevronRight className="w-4 h-4 text-slate-400"/>
                                 </div>
                             </button>
                         ))}
@@ -192,15 +246,18 @@ export default function PassengerDashboard() {
                 </div>
             )}
 
-            {/* Rewards Teaser (Passive) */}
-            <div className="bg-gradient-to-br from-slate-100 to-slate-200 p-6 rounded-3xl relative overflow-hidden opacity-80 grayscale-[0.5]">
-               <div className="relative z-10">
-                  <span className="bg-black/10 text-black text-[9px] font-bold px-2 py-1 rounded mb-2 inline-block">COMING SOON</span>
-                  <h3 className="font-bold text-slate-900 mb-1 flex items-center gap-2"><Gift className="w-4 h-4"/> Velox Rewards</h3>
-                  <p className="text-xs text-slate-600">Earn points for every km you travel. Redeem for free rides and partner perks.</p>
+            {/* Contextual Promo */}
+            <div className="bg-indigo-600 p-6 rounded-3xl relative overflow-hidden shadow-lg">
+               <div className="relative z-10 text-white">
+                  <div className="flex items-center gap-2 mb-2">
+                     <span className="bg-white/20 text-[9px] font-bold px-2 py-1 rounded">COMING SOON</span>
+                     <Star className="w-3 h-3 text-yellow-400 fill-current"/>
+                  </div>
+                  <h3 className="font-bold text-lg mb-1">Velox Rewards</h3>
+                  <p className="text-xs text-indigo-100 opacity-90 max-w-[80%]">Ride smart, earn points, get free rides. Launching next month.</p>
                </div>
-               <div className="absolute -right-4 -bottom-4 opacity-10 rotate-12">
-                  <Star className="w-24 h-24"/>
+               <div className="absolute -right-6 -bottom-6 text-white opacity-10 rotate-12">
+                  <Gift className="w-32 h-32"/>
                </div>
             </div>
          </div>
@@ -216,17 +273,15 @@ export default function PassengerDashboard() {
                onPickupSelect={handleMapSelect}
                onDropoffSelect={handleMapSelect}
                ghostDrivers={ghostDrivers}
+               routeCoordinates={routeCoordinates} 
             />
          </div>
-
-         {/* Selection Mode Overlay */}
          {mapMode && (
             <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[1000] bg-black text-white px-6 py-3 rounded-full font-bold shadow-2xl animate-bounce flex items-center gap-3 cursor-pointer hover:bg-slate-900 transition" onClick={() => setMapMode(null)}>
                <span>Tap map to set {mapMode === 'pickup' ? 'Pickup' : 'Dropoff'}</span>
             </div>
          )}
       </div>
-
     </div>
   );
 }

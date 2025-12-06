@@ -1,6 +1,7 @@
 'use client';
 import { X } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 interface ModalProps {
   isOpen: boolean;
@@ -11,24 +12,35 @@ interface ModalProps {
 }
 
 export default function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-md' }: ModalProps) {
+  const [mounted, setMounted] = useState(false);
+
   useEffect(() => {
+    setMounted(true);
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
+    
     if (isOpen) {
       document.addEventListener('keydown', handleEsc);
+      // Prevent scrolling on the body when modal is open
       document.body.style.overflow = 'hidden';
     }
+    
     return () => {
       document.removeEventListener('keydown', handleEsc);
+      // Restore scrolling
       document.body.style.overflow = 'unset';
     };
   }, [isOpen, onClose]);
 
+  // Don't render anything on the server (hydration mismatch prevention)
+  if (!mounted) return null;
+
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+  // Use createPortal to render the modal at the end of document.body
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div 
         className={`bg-white rounded-3xl w-full ${maxWidth} relative shadow-2xl overflow-hidden animate-scale-up`}
         role="dialog"
@@ -47,6 +59,7 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
