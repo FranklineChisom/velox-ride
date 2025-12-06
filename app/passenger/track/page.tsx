@@ -30,8 +30,8 @@ function TrackContent() {
   const [eta, setEta] = useState<string>('--');
   const [status, setStatus] = useState('Loading...');
   
-  // OTP State (Simulated for this demo, usually from DB)
-  const [otp, setOtp] = useState<string>('');
+  // OTP State
+  const [otp, setOtp] = useState<string>('----');
 
   // Modals
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -43,9 +43,6 @@ function TrackContent() {
         router.push('/passenger/trips');
         return;
     }
-
-    // Generate random 4-digit OTP if not exists (Safety Feature)
-    setOtp(Math.floor(1000 + Math.random() * 9000).toString());
 
     const fetchData = async () => {
         const { data: { user } } = await supabase.auth.getUser();
@@ -65,6 +62,14 @@ function TrackContent() {
         const ride = data.rides;
         setBooking(data);
         setStatus(ride.status === 'completed' ? 'Arrived' : ride.status === 'active' ? 'On Trip' : 'Driver En Route');
+        
+        // Set OTP from DB if available, else fallback (for older records)
+        if (ride.verification_code) {
+            setOtp(ride.verification_code);
+        } else {
+            // Fallback for demo/dev if DB column is empty
+             setOtp('1234'); 
+        }
 
         if (ride) {
             const p = { lat: ride.origin_lat, lng: ride.origin_lng };
@@ -110,7 +115,7 @@ function TrackContent() {
   };
 
   const handleShare = async () => {
-      const text = `Track my ride on VeluxeRide: ${window.location.href}`;
+      const text = `Track my ride on VeloxRide: ${window.location.href}`;
       if (navigator.share) {
           await navigator.share({ title: 'My Ride', text, url: window.location.href });
       } else {
@@ -230,7 +235,7 @@ function TrackContent() {
              <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-4">
                 <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center shrink-0"><Shield className="w-6 h-6 text-slate-600"/></div>
                 <div>
-                    <h4 className="font-bold text-slate-900">Veluxe Safety Line</h4>
+                    <h4 className="font-bold text-slate-900">Velox Safety Line</h4>
                     <p className="text-xs text-slate-600">24/7 Support for urgent issues.</p>
                 </div>
                 <button className="ml-auto bg-black text-white px-4 py-2 rounded-lg text-sm font-bold">Call</button>
@@ -243,13 +248,5 @@ function TrackContent() {
        </Modal>
 
     </div>
-  );
-}
-
-export default function TrackPage() {
-  return (
-    <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-white"><Loader2 className="animate-spin w-8 h-8 text-black"/></div>}>
-      <TrackContent />
-    </Suspense>
   );
 }
