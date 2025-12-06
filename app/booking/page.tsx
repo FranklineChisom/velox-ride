@@ -68,7 +68,7 @@ export default function BookingPage() {
               total_seats: 4,
               status: 'active',
               origin_lat: 0, origin_lng: 0, destination_lat: 0, destination_lng: 0, driver_arrived: false, created_at: new Date().toISOString(),
-              profiles: { full_name: 'Finding Driver...', vehicle_model: 'Velox Car', vehicle_plate: '---', is_verified: true, avatar_url: null } as any
+              profiles: { full_name: 'Finding Driver...', vehicle_model: 'Veluxe Car', vehicle_plate: '---', is_verified: true, avatar_url: null } as any
           });
           setLoading(false);
       } else if (rideId) {
@@ -84,7 +84,7 @@ export default function BookingPage() {
   }, []);
 
   const handleApplyPromo = () => {
-    if (promoCode.toUpperCase() === 'VELOX500') { setAppliedPromo('VELOX500'); setDiscount(500); addToast('Promo applied!', 'success'); } 
+    if (promoCode.toUpperCase() === 'Veluxe500') { setAppliedPromo('Veluxe500'); setDiscount(500); addToast('Promo applied!', 'success'); } 
     else addToast('Invalid code', 'error');
   };
 
