@@ -6,8 +6,8 @@ import { createClient } from '@/lib/supabase';
 import { RideWithDriver, Wallet, VehicleClass } from '@/types';
 import { format, addMinutes } from 'date-fns';
 import { 
-  User, MapPin, Clock, CreditCard, ArrowLeft, Loader2, 
-  CheckCircle, ShieldCheck, Wallet as WalletIcon, Banknote, 
+  User, Clock, CreditCard, ArrowLeft, Loader2, 
+  CheckCircle, Wallet as WalletIcon, Banknote, 
   ChevronRight, Lock, Tag
 } from 'lucide-react';
 import { APP_CONFIG, PAYMENT_METHODS } from '@/lib/constants';
@@ -17,11 +17,6 @@ import { calculateFare } from '@/lib/pricing';
 import { getDrivingStats } from '@/lib/osm';
 
 declare global { interface Window { PaystackPop: any; } }
-
-// Single class as per request
-const VEHICLE_CLASSES: VehicleClass[] = [
-  { id: 'standard', name: 'Standard', multiplier: 1, image: 'https://cdn-icons-png.flaticon.com/512/3202/3202926.png', description: 'Affordable everyday rides', eta: 5 },
-];
 
 export default function BookingPage() {
   const searchParams = useSearchParams();
@@ -36,6 +31,7 @@ export default function BookingPage() {
   
   const [ride, setRide] = useState<RideWithDriver | null>(null);
   const [wallet, setWallet] = useState<Wallet | null>(null);
+  const [vehicleClasses, setVehicleClasses] = useState<VehicleClass[]>([]); // Dynamic Classes
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
@@ -55,8 +51,14 @@ export default function BookingPage() {
       if (!user) { router.push(`/auth?role=passenger`); return; }
       setUser(user);
 
-      const { data: walletData } = await supabase.from('wallets').select('*').eq('user_id', user.id).single();
-      if (walletData) setWallet(walletData);
+      // Fetch Wallet & Vehicle Classes concurrently
+      const [walletRes, classesRes] = await Promise.all([
+        supabase.from('wallets').select('*').eq('user_id', user.id).single(),
+        supabase.from('vehicle_classes').select('*').eq('is_active', true)
+      ]);
+
+      if (walletRes.data) setWallet(walletRes.data);
+      if (classesRes.data) setVehicleClasses(classesRes.data);
 
       if (mode === 'instant') {
           // DYNAMICALLY CALCULATE INSTANT RIDE DATA
@@ -68,13 +70,11 @@ export default function BookingPage() {
           const dLng = parseFloat(searchParams.get('dropoff_lng') || '0');
 
           let price = 0;
-          // If we have coords, get real pricing
           if (pLat && pLng && dLat && dLng) {
              const stats = await getDrivingStats({ lat: pLat, lng: pLng }, { lat: dLat, lng: dLng });
              price = calculateFare(stats);
           } else {
-             // Fallback (should rarely happen if widget works)
-             price = 2000; 
+             price = 2000; // Fallback
           }
 
           setRide({
@@ -133,10 +133,12 @@ export default function BookingPage() {
       // 2. Create Real Ride Record if Instant
       let finalRideId = rideId;
       if (mode === 'instant' && user && ride) {
-          // NOTE: In real app, this would match an existing driver. 
-          // Here we assign to self or first available driver for MVP flow continuity.
-          const { data: drivers } = await supabase.from('profiles').select('id').eq('role', 'driver').limit(1);
-          const driverId = drivers?.[0]?.id || user.id; 
+          // Assign to a real driver in DB (First available for MVP)
+          const { data: drivers } = await supabase.from('profiles').select('id').eq('role', 'driver').eq('is_online', true).limit(1);
+          // If no online driver, fallback to random driver to prevent crash in demo, but strictly this should fail in prod.
+          const { data: allDrivers } = await supabase.from('profiles').select('id').eq('role', 'driver').limit(1);
+          
+          const driverId = drivers?.[0]?.id || allDrivers?.[0]?.id || user.id;
 
           const { data: newRide } = await supabase.from('rides').insert({
               driver_id: driverId, 
@@ -194,7 +196,8 @@ export default function BookingPage() {
                     </div>
                     <div>
                         <h3 className="font-bold text-slate-900 text-lg">{mode === 'instant' ? 'Finding Driver...' : ride.profiles?.full_name}</h3>
-                        <p className="text-xs text-slate-500">Standard Class</p>
+                        {/* Display first active vehicle class as default or make it selectable in future */}
+                        <p className="text-xs text-slate-500">{vehicleClasses[0]?.name || 'Standard'} Class</p>
                     </div>
                 </div>
 
@@ -206,7 +209,7 @@ export default function BookingPage() {
                       <p className="font-bold text-slate-900 text-lg leading-tight">{ride.origin}</p>
                       <p className="text-sm text-green-600 mt-1 flex items-center gap-1 font-bold">
                          <Clock className="w-3.5 h-3.5"/> 
-                         {mode === 'instant' ? '2-5 mins away' : `${format(new Date(ride.departure_time), 'h:mm')} - ${format(addMinutes(new Date(ride.departure_time), 5), 'h:mm a')}`}
+                         {mode === 'instant' ? `${vehicleClasses[0]?.base_eta || 5} mins away` : `${format(new Date(ride.departure_time), 'h:mm')} - ${format(addMinutes(new Date(ride.departure_time), 5), 'h:mm a')}`}
                       </p>
                    </div>
                    <div className="relative z-10">
@@ -220,9 +223,9 @@ export default function BookingPage() {
              <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex items-center justify-between">
                 <div><h3 className="font-bold text-slate-900 text-sm">Passengers</h3><p className="text-slate-400 text-xs">Total seats to reserve</p></div>
                 <div className="flex items-center gap-4 bg-slate-50 p-1.5 rounded-xl">
-                   <button disabled={seats <= 1} onClick={() => setSeats(s => Math.max(1, s - 1))} className="w-8 h-8 bg-white rounded-lg shadow-sm flex items-center justify-center font-bold hover:bg-slate-100 disabled:opacity-50">-</button>
+                   <button disabled={seats <= 1} onClick={() => router.replace(`?ride_id=${rideId || ''}&seats=${Math.max(1, seats - 1)}&mode=${mode || ''}`)} className="w-8 h-8 bg-white rounded-lg shadow-sm flex items-center justify-center font-bold hover:bg-slate-100 disabled:opacity-50">-</button>
                    <span className="w-4 text-center font-bold">{seats}</span>
-                   <button disabled={seats >= (ride.total_seats || 4)} onClick={() => setSeats(s => Math.min((ride.total_seats || 4), s + 1))} className="w-8 h-8 bg-white rounded-lg shadow-sm flex items-center justify-center font-bold hover:bg-slate-100 disabled:opacity-50">+</button>
+                   <button disabled={seats >= (ride.total_seats || 4)} onClick={() => router.replace(`?ride_id=${rideId || ''}&seats=${Math.min((ride.total_seats || 4), seats + 1)}&mode=${mode || ''}`)} className="w-8 h-8 bg-white rounded-lg shadow-sm flex items-center justify-center font-bold hover:bg-slate-100 disabled:opacity-50">+</button>
                 </div>
              </div>
              

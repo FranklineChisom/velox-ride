@@ -101,7 +101,7 @@ export default function PassengerWalletPage() {
   if (loading) return <div className="flex justify-center items-center h-[60vh]"><Loader2 className="w-10 h-10 animate-spin text-slate-300"/></div>;
 
   return (
-    <div className="space-y-8 pt-32 pb-20 px-6 max-w-4xl mx-auto">
+    <div className="space-y-8 pb-20 px-6 max-w-4xl mx-auto">
       <Script src="https://js.paystack.co/v1/inline.js" strategy="lazyOnload" />
       
       <div className="bg-black text-white p-10 rounded-[2.5rem] shadow-2xl relative overflow-hidden">

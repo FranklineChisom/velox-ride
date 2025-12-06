@@ -73,7 +73,7 @@ export default function PassengerTripsPage() {
   });
 
   return (
-    <div className="space-y-8 pt-32 pb-20 px-6 max-w-4xl mx-auto">
+    <div className="space-y-8 pb-20 px-6 max-w-4xl mx-auto">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-2xl font-bold text-slate-900">My Trips</h1>
         <div className="bg-slate-100 p-1 rounded-xl flex">

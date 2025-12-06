@@ -3,15 +3,15 @@ import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { 
-  Briefcase, Home, Clock, Star, Gift, ChevronRight, Navigation, 
-  ShieldCheck, CloudRain, Zap, MapPin
+  Briefcase, Home, Clock, ChevronRight, Navigation, 
+  MapPin, Gift
 } from 'lucide-react';
 import { APP_CONFIG } from '@/lib/constants';
 import { usePassengerDashboard } from '@/hooks/usePassengerDashboard';
 import { reverseGeocode, getRoute } from '@/lib/osm';
 import { useToast } from '@/components/ui/ToastProvider';
-import { Coordinates } from '@/types';
-import { format } from 'date-fns';
+import { Coordinates, Profile } from '@/types';
+import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 
 // Components
@@ -24,25 +24,59 @@ const LeafletMap = dynamic(() => import('@/components/Map'), {
 
 export default function PassengerDashboard() {
   const { 
-    loading, profile, wallet, greeting, savedPlaces, recentSearches, activeBooking, refresh 
+    loading, profile, wallet, savedPlaces, recentSearches, activeBooking, refresh 
   } = usePassengerDashboard();
   
   const { addToast } = useToast();
   const router = useRouter();
+  const supabase = createClient();
   
   // Map State
   const [mapMode, setMapMode] = useState<'pickup' | 'dropoff' | null>(null);
   const [coords, setCoords] = useState<{ pickup?: Coordinates; dropoff?: Coordinates }>({});
   const [widgetQuery, setWidgetQuery] = useState({ origin: '', destination: '' });
-  const [ghostDrivers, setGhostDrivers] = useState<Coordinates[]>([]);
+  const [activeDrivers, setActiveDrivers] = useState<Coordinates[]>([]); // REAL DRIVERS
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][] | undefined>(undefined);
 
   // Context State
-  const [commuteContext, setCommuteContext] = useState<{ label: string, time: string, traffic: 'light' | 'heavy' } | null>(null);
+  const [commuteContext, setCommuteContext] = useState<{ label: string } | null>(null);
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // 1. Commute Intelligence (Simulated)
+  // 1. Fetch Real Active Drivers
+  useEffect(() => {
+    const fetchDrivers = async () => {
+      // Get drivers who are online and verified
+      const { data } = await supabase
+        .from('profiles')
+        .select('current_lat, current_lng')
+        .eq('role', 'driver')
+        .eq('is_online', true)
+        .eq('is_verified', true)
+        .not('current_lat', 'is', null)
+        .not('current_lng', 'is', null);
+
+      if (data) {
+        const driverCoords = data.map(d => ({ lat: d.current_lat!, lng: d.current_lng! }));
+        setActiveDrivers(driverCoords);
+      }
+    };
+
+    fetchDrivers();
+    // Real-time subscription for driver movement
+    const channel = supabase.channel('online-drivers')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: "role=eq.driver" }, (payload) => {
+         const newProfile = payload.new as Profile;
+         if (newProfile.is_online && newProfile.current_lat && newProfile.current_lng) {
+             fetchDrivers(); // Refresh list on update
+         }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [supabase]);
+
+  // 2. Commute Context (Simplified to avoid fake traffic data)
   useEffect(() => {
     const hour = new Date().getHours();
     const isMorning = hour < 12;
@@ -50,32 +84,9 @@ export default function PassengerDashboard() {
     const place = savedPlaces.find(p => p.label.toLowerCase() === targetLabel);
 
     if (place) {
-        // In a real app, we'd fetch real traffic data here
-        setCommuteContext({
-            label: targetLabel === 'work' ? 'Work' : 'Home',
-            time: isMorning ? '25 mins' : '45 mins', // Simulated traffic difference
-            traffic: isMorning ? 'light' : 'heavy'
-        });
+        setCommuteContext({ label: targetLabel === 'work' ? 'Work' : 'Home' });
     }
   }, [savedPlaces]);
-
-  // 2. Ghost Drivers
-  useEffect(() => {
-    const center = APP_CONFIG.defaultCenter;
-    const ghosts = Array.from({ length: 5 }).map(() => ({
-      lat: center.lat + (Math.random() - 0.5) * 0.03,
-      lng: center.lng + (Math.random() - 0.5) * 0.03
-    }));
-    setGhostDrivers(ghosts);
-
-    const interval = setInterval(() => {
-      setGhostDrivers(prev => prev.map(g => ({
-        lat: g.lat + (Math.random() - 0.5) * 0.0005,
-        lng: g.lng + (Math.random() - 0.5) * 0.0005
-      })));
-    }, 3000);
-    return () => clearInterval(interval);
-  }, []);
 
   // 3. Route Calculation
   useEffect(() => {
@@ -165,7 +176,7 @@ export default function PassengerDashboard() {
                 </div>
             )}
 
-            {/* Commute Insight Card (Only if no active ride) */}
+            {/* Commute Insight Card */}
             {!activeBooking && commuteContext && (
                 <div onClick={() => handleShortcut(commuteContext.label.toLowerCase() as 'home'|'work')} className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-2xl border border-blue-100 cursor-pointer hover:shadow-md transition flex justify-between items-center">
                     <div className="flex items-center gap-3">
@@ -174,10 +185,7 @@ export default function PassengerDashboard() {
                         </div>
                         <div>
                             <p className="text-xs font-bold text-blue-900 uppercase tracking-wider">Commute to {commuteContext.label}</p>
-                            <p className="text-sm font-bold text-slate-700 flex items-center gap-1">
-                                {commuteContext.traffic === 'heavy' ? <span className="text-red-500">Heavy Traffic</span> : <span className="text-green-600">Clear Road</span>} 
-                                • {commuteContext.time}
-                            </p>
+                            <p className="text-sm text-slate-600 font-medium">Tap to set destination</p>
                         </div>
                     </div>
                     <div className="bg-white p-1.5 rounded-full text-slate-400"><ChevronRight className="w-4 h-4"/></div>
@@ -245,21 +253,19 @@ export default function PassengerDashboard() {
                     </div>
                 </div>
             )}
-
-            {/* Contextual Promo */}
+            
+            {/* Invite/Rewards Section - Replaced placeholder with simple referral UI */}
             <div className="bg-indigo-600 p-6 rounded-3xl relative overflow-hidden shadow-lg">
                <div className="relative z-10 text-white">
-                  <div className="flex items-center gap-2 mb-2">
-                     <span className="bg-white/20 text-[9px] font-bold px-2 py-1 rounded">COMING SOON</span>
-                     <Star className="w-3 h-3 text-yellow-400 fill-current"/>
-                  </div>
-                  <h3 className="font-bold text-lg mb-1">Veluxe Rewards</h3>
-                  <p className="text-xs text-indigo-100 opacity-90 max-w-[80%]">Ride smart, earn points, get free rides.</p>
+                  <h3 className="font-bold text-lg mb-1">Invite Friends</h3>
+                  <p className="text-xs text-indigo-100 opacity-90 max-w-[80%] mb-3">Share the love. Get discounted rides when your friends sign up.</p>
+                  <button onClick={() => addToast('Referral link copied', 'success')} className="bg-white/20 hover:bg-white/30 text-xs font-bold px-3 py-1.5 rounded-lg transition backdrop-blur-md">Launching Soon!</button>
                </div>
                <div className="absolute -right-6 -bottom-6 text-white opacity-10 rotate-12">
                   <Gift className="w-32 h-32"/>
                </div>
             </div>
+
          </div>
       </div>
 
@@ -272,7 +278,8 @@ export default function PassengerDashboard() {
                selectionMode={mapMode}
                onPickupSelect={handleMapSelect}
                onDropoffSelect={handleMapSelect}
-               ghostDrivers={ghostDrivers}
+               driverLocation={activeDrivers.length > 0 ? activeDrivers[0] : undefined} // Show one active driver for now or use clustering in future
+               ghostDrivers={activeDrivers.length > 1 ? activeDrivers.slice(1) : []} // Show others as ghosts/markers
                routeCoordinates={routeCoordinates} 
             />
          </div>

@@ -112,9 +112,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     setLoading(true);
     await supabase.auth.signOut();
+    // State is cleared by the onAuthStateChange 'SIGNED_OUT' event, but we do it here too for responsiveness
     setUser(null);
     setProfile(null);
-    router.push('/auth');
+    router.replace('/auth');
     setLoading(false);
   };
 

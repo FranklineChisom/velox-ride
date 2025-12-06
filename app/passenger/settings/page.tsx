@@ -28,9 +28,6 @@ const ShortcutsSection = ({ places, onSave }: { places: SavedPlace[], onSave: (l
 
     const handleSave = async () => {
         if (!editing || !tempAddress) return;
-        // If no new coords selected (just text edit), we might want to warn or Geocode. 
-        // For now, assume LocationInput provides coords if changed via map/suggestion.
-        // If coords are missing but address is present, we'll pass 0,0 or keep existing if logic allows (handled in parent).
         setLoading(true);
         await onSave(editing, tempAddress, tempCoords?.lat || 0, tempCoords?.lng || 0);
         setLoading(false);
@@ -150,14 +147,24 @@ const PaymentSection = ({ wallet }: { wallet: Wallet | null }) => {
 };
 
 const PreferencesSection = ({ profile, onUpdate }: { profile: Profile | null, onUpdate: (data: any) => Promise<void> }) => {
+    // FIX: State MUST sync with props when they load
     const [toggles, setToggles] = useState({ 
-        notifications_enabled: profile?.notifications_enabled ?? true, 
-        email_updates: profile?.email_updates ?? true 
+        notifications_enabled: true, 
+        email_updates: true 
     });
+
+    useEffect(() => {
+        if (profile) {
+            setToggles({
+                notifications_enabled: profile.notifications_enabled ?? true,
+                email_updates: profile.email_updates ?? true
+            });
+        }
+    }, [profile]);
 
     const toggle = async (key: 'notifications_enabled' | 'email_updates') => {
         const newValue = !toggles[key];
-        setToggles(prev => ({ ...prev, [key]: newValue }));
+        setToggles(prev => ({ ...prev, [key]: newValue })); // Optimistic update
         await onUpdate({ [key]: newValue });
     };
 
@@ -218,7 +225,11 @@ export default function PassengerSettings() {
 
       if (profileRes.data) {
         setProfile(profileRes.data);
-        setFormData({ full_name: profileRes.data.full_name || '', phone_number: profileRes.data.phone_number || '', address: profileRes.data.address || '' });
+        setFormData({ 
+            full_name: profileRes.data.full_name || '', 
+            phone_number: profileRes.data.phone_number || '', 
+            address: profileRes.data.address || '' 
+        });
       }
       if (placesRes.data) setPlaces(placesRes.data);
       if (walletRes.data) setWallet(walletRes.data);
@@ -236,13 +247,17 @@ export default function PassengerSettings() {
 
   const updateProfile = async (dataToUpdate?: any) => {
     if (!profile) return;
-    setSavingProfile(true);
+    if (!dataToUpdate) setSavingProfile(true); // Only show spinner for full form save
+    
     const updates = dataToUpdate || formData;
     const { error } = await supabase.from('profiles').update(updates).eq('id', profile.id);
+    
     if (!error) { 
-        setProfile({ ...profile, ...updates }); 
-        if (!dataToUpdate) setIsEditingProfile(false); // Only close edit mode if submitting form
-        addToast("Profile updated", 'success'); 
+        setProfile(prev => prev ? ({ ...prev, ...updates }) : null); 
+        if (!dataToUpdate) {
+            setIsEditingProfile(false); 
+            addToast("Profile updated", 'success');
+        }
     } else {
         addToast("Failed to update profile", 'error');
     }
@@ -252,9 +267,7 @@ export default function PassengerSettings() {
   const saveShortcut = async (label: string, address: string, lat: number, lng: number) => {
       if (!profile) return;
       
-      // Check if shortcut exists
       const existing = places.find(p => p.label.toLowerCase() === label.toLowerCase());
-      
       let error;
       let data;
 
@@ -284,7 +297,6 @@ export default function PassengerSettings() {
       const existing = places.find(pl => pl.label.toLowerCase() === p.label.toLowerCase());
       
       if (existing) {
-          // If place with label exists, update it
           saveShortcut(p.label, p.address, p.lat, p.lng);
           return;
       }
@@ -313,7 +325,7 @@ export default function PassengerSettings() {
   if (loading) return <div className="flex justify-center items-center h-[60vh]"><Loader2 className="w-8 h-8 animate-spin text-slate-300"/></div>;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 pb-20 pt-32 px-6">
+    <div className="max-w-4xl mx-auto space-y-8 pb-20 px-6">
       <h1 className="text-3xl font-bold text-slate-900 mb-8">Settings</h1>
 
       <div className="grid lg:grid-cols-2 gap-8">

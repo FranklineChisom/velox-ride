@@ -1,9 +1,9 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { HelpCircle, MessageCircle, Phone, ChevronDown, Send, Loader2, Clock, CheckCircle } from 'lucide-react';
+import { MessageCircle, Phone, ChevronDown, Send, Loader2, Clock } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import { useToast } from '@/components/ui/ToastProvider';
-import { SupportTicket } from '@/types';
+import { SupportTicket, FAQ } from '@/types'; // Added FAQ type
 import Modal from '@/components/ui/Modal';
 
 export default function SupportPage() {
@@ -12,6 +12,8 @@ export default function SupportPage() {
   
   const [loading, setLoading] = useState(false);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [faqs, setFaqs] = useState<FAQ[]>([]); // Dynamic FAQs
+  const [loadingFaqs, setLoadingFaqs] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [newTicket, setNewTicket] = useState({ subject: '', message: '' });
   const [user, setUser] = useState<any>(null);
@@ -23,6 +25,7 @@ export default function SupportPage() {
             setUser(user);
             fetchTickets(user.id);
         }
+        fetchFaqs();
     };
     init();
   }, []);
@@ -35,6 +38,17 @@ export default function SupportPage() {
       .order('created_at', { ascending: false });
     
     if (data) setTickets(data as SupportTicket[]);
+  };
+
+  const fetchFaqs = async () => {
+    const { data } = await supabase
+        .from('faqs')
+        .select('*')
+        .eq('is_active', true)
+        .order('created_at', { ascending: true });
+    
+    if (data) setFaqs(data as FAQ[]);
+    setLoadingFaqs(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -62,7 +76,7 @@ export default function SupportPage() {
   };
 
   return (
-    <div className="p-6 lg:p-10 max-w-4xl mx-auto pt-32">
+    <div className="p-6 lg:p-10 max-w-4xl mx-auto pt-0">
       <h1 className="text-3xl font-bold text-slate-900 mb-8">Help & Support</h1>
 
       {/* Contact Options */}
@@ -117,25 +131,29 @@ export default function SupportPage() {
             </div>
          </section>
 
-         {/* FAQs (Static for now, can be DB driven later) */}
+         {/* FAQs */}
          <section>
             <h2 className="font-bold text-xl text-slate-900 mb-6">Frequently Asked Questions</h2>
             <div className="space-y-3">
-               {[
-                  { q: "How do I cancel a ride?", a: "Go to 'My Trips', select the upcoming trip, and tap 'Cancel Ride'." },
-                  { q: "Why was I charged a fee?", a: "Cancellation fees apply if you cancel less than 1 hour before pickup." },
-                  { q: "How do I fund my wallet?", a: "Navigate to the Wallet tab and use the 'Fund Wallet' button via Paystack." },
-               ].map((faq, i) => (
-                  <div key={i} className="group bg-white border border-slate-100 p-5 rounded-xl cursor-pointer hover:bg-slate-50 transition">
-                     <div className="flex justify-between items-center">
-                        <span className="font-medium text-slate-800 text-sm">{faq.q}</span>
-                        <ChevronDown className="w-4 h-4 text-slate-400" />
-                     </div>
-                     <div className="hidden group-hover:block mt-2 text-xs text-slate-500 pt-2 border-t border-slate-200/50">
-                        {faq.a}
-                     </div>
-                  </div>
-               ))}
+               {loadingFaqs ? (
+                   <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-slate-300"/></div>
+               ) : faqs.length === 0 ? (
+                   <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-100">
+                       <p className="text-slate-400 text-sm">No FAQs available.</p>
+                   </div>
+               ) : (
+                   faqs.map((faq) => (
+                      <div key={faq.id} className="group bg-white border border-slate-100 p-5 rounded-xl cursor-pointer hover:bg-slate-50 transition">
+                         <div className="flex justify-between items-center">
+                            <span className="font-medium text-slate-800 text-sm">{faq.question}</span>
+                            <ChevronDown className="w-4 h-4 text-slate-400" />
+                         </div>
+                         <div className="hidden group-hover:block mt-2 text-xs text-slate-500 pt-2 border-t border-slate-200/50 leading-relaxed">
+                            {faq.answer}
+                         </div>
+                      </div>
+                   ))
+               )}
             </div>
          </section>
       </div>

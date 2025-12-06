@@ -22,6 +22,11 @@ export interface Profile {
   vehicle_plate?: string | null;
   vehicle_color?: string | null;
   trusted_contacts?: string[]; 
+  // Add these new fields
+  notifications_enabled?: boolean;
+  email_updates?: boolean;
+  current_lat?: number;
+  current_lng?: number;
 }
 
 export interface Vehicle {
@@ -193,10 +198,18 @@ export interface EmergencyContact {
 }
 
 export interface VehicleClass {
-  id: 'standard' | 'comfort' | 'exec';
+  id: string;
   name: string;
   multiplier: number;
-  image: string;
+  image_url: string;
   description: string;
-  eta: number; // in mins
+  base_eta: number; 
+  is_active: boolean;
+}
+
+export interface FAQ {
+  id: string;
+  question: string;
+  answer: string;
+  category: string;
 }
