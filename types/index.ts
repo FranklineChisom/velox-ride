@@ -1,5 +1,4 @@
 export type UserRole = 'passenger' | 'driver' | 'employee' | 'manager' | 'superadmin';
-// Added 'GUARANTOR_DETAILS' to the flow
 export type OnboardingStep = 'PROFILE_DETAILS' | 'PHONE_VERIFICATION' | 'IDENTITY_VERIFICATION' | 'VEHICLE_DETAILS' | 'GUARANTOR_DETAILS' | 'DOCUMENTS_UPLOAD' | 'AWAITING_APPROVAL' | 'COMPLETED';
 export type DocStatus = 'missing' | 'pending' | 'verified' | 'rejected' | 'expired';
 
@@ -11,28 +10,18 @@ export interface Profile {
   phone_number: string | null;
   phone_verified: boolean; 
   avatar_url?: string | null;
-  
-  // Compliance & State
   onboarding_step: OnboardingStep;
   is_verified: boolean; 
   is_suspended: boolean; 
-  
   created_at: string;
   updated_at?: string;
   address?: string;
   is_online: boolean; 
-  
-  // Driver specifics
   vehicle_model?: string | null;
   vehicle_year?: string | null;
   vehicle_plate?: string | null;
   vehicle_color?: string | null;
-  
-  // Preferences
-  preferences?: {
-    notifications_enabled: boolean;
-    email_updates: boolean;
-  };
+  trusted_contacts?: string[]; 
 }
 
 export interface Vehicle {
@@ -59,7 +48,6 @@ export interface ComplianceRecord {
   updated_at: string;
 }
 
-// NEW: Guarantor Table
 export interface Guarantor {
   id: string;
   driver_id: string;
@@ -70,7 +58,6 @@ export interface Guarantor {
   is_verified: boolean;
 }
 
-// Helper type for the Review Dashboard
 export interface DriverApplication {
   profile: Profile;
   vehicle: Vehicle | null;
@@ -97,6 +84,7 @@ export interface Ride {
   created_at: string;
   profiles?: Profile;
   bookings?: Booking[];
+  verification_code?: string; // 4-digit OTP
 }
 
 export interface Booking {
@@ -111,6 +99,7 @@ export interface Booking {
   created_at: string;
   profiles?: Profile; 
   rides?: Ride;
+  pickup_note?: string;
 }
 
 export interface RideWithBookings extends Ride {
@@ -123,6 +112,10 @@ export interface BookingWithRide extends Booking {
   rides: Ride & {
     profiles: Profile; 
   };
+}
+
+export interface RideWithDriver extends Ride {
+  profiles: Profile;
 }
 
 export interface Wallet {
@@ -197,4 +190,13 @@ export interface EmergencyContact {
   name: string;
   phone_number: string;
   relationship: string;
+}
+
+export interface VehicleClass {
+  id: 'standard' | 'comfort' | 'exec';
+  name: string;
+  multiplier: number;
+  image: string;
+  description: string;
+  eta: number; // in mins
 }

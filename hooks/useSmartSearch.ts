@@ -1,15 +1,15 @@
 import { useState, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
 import { RideWithDriver, Suggestion, Coordinates } from '@/types';
-import { analyzeRideMatch, MatchAnalysis, getDistanceFromLatLonInKm } from '@/lib/search-engine';
-import { getDrivingStats } from '@/lib/osm'; // Import the new function
+import { analyzeRideMatch, MatchAnalysis } from '@/lib/search-engine';
+import { getDrivingStats } from '@/lib/osm'; 
 import { startOfDay, endOfDay, addDays } from 'date-fns';
 
 export interface SmartRideResult extends RideWithDriver {
   match: MatchAnalysis;
   availableSeats: number;
-  realDrivingTime?: number; // New field for real-world data
-  realDrivingDistance?: number; // New field
+  realDrivingTime?: number;
+  realDrivingDistance?: number;
 }
 
 interface UseSmartSearchProps {
@@ -34,13 +34,17 @@ export function useSmartSearch({ initialOrigin = '', initialDest = '', onToast }
   
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // ... (keep geocode and fetchSuggestions functions as they were) ...
+  // Safe Geocode Function
   const geocode = async (q: string): Promise<Coordinates | null> => {
+    if (!q) return null;
     try {
       const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`);
+      if (!res.ok) return null;
       const data = await res.json();
       if(data[0]) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-    } catch(e) { console.error(e); }
+    } catch(e) { 
+      console.warn("Geocoding error (non-fatal):", e); 
+    }
     return null;
   };
 
@@ -50,9 +54,12 @@ export function useSmartSearch({ initialOrigin = '', initialDest = '', onToast }
     try {
       const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(input)}&countrycodes=ng&limit=5`);
       const data = await res.json();
-      setSuggestions(data);
-    } catch (error) { console.error(error); } 
-    finally { setIsTyping(false); }
+      setSuggestions(data || []);
+    } catch (error) { 
+      console.error(error); 
+    } finally { 
+      setIsTyping(false); 
+    }
   };
 
   const handleInputChange = (field: 'origin' | 'destination', value: string) => {
@@ -61,11 +68,11 @@ export function useSmartSearch({ initialOrigin = '', initialDest = '', onToast }
     else setCoords(prev => ({ ...prev, dropoff: undefined }));
     setHasSearched(false);
     setFilteredRides([]);
+    
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => { fetchSuggestions(value); }, 500);
   };
 
-  // --- The Smart Search Function ---
   const performSearch = async (date?: string, time?: string, isInitial = false) => {
     if (!query.origin || !query.destination) {
         if(!isInitial) onToast("Please enter both locations", "error");
@@ -76,59 +83,96 @@ export function useSmartSearch({ initialOrigin = '', initialDest = '', onToast }
     setSuggestions([]);
     setHasSearched(true);
 
-    // 1. Resolve Coordinates
-    let finalPickup = coords.pickup || await geocode(query.origin);
-    let finalDropoff = coords.dropoff || await geocode(query.destination);
-    setCoords({ pickup: finalPickup || undefined, dropoff: finalDropoff || undefined });
-
     try {
+        // 1. Resolve Coordinates safely
+        // We use explicit null checks to ensure we don't pass bad data
+        let finalPickup = coords.pickup;
+        if (!finalPickup) finalPickup = await geocode(query.origin);
+        
+        let finalDropoff = coords.dropoff;
+        if (!finalDropoff) finalDropoff = await geocode(query.destination);
+
+        setCoords({ 
+            pickup: finalPickup || undefined, 
+            dropoff: finalDropoff || undefined 
+        });
+
+        // 2. Prepare Date safely
         const now = new Date().toISOString();
         let targetDateObj: Date | undefined;
-        if (date && time) targetDateObj = new Date(`${date}T${time}`);
-        else if (date) targetDateObj = new Date(`${date}T08:00:00`);
+        
+        if (date) {
+            const dateStr = time ? `${date}T${time}` : `${date}T08:00:00`;
+            const parsed = new Date(dateStr);
+            if (!isNaN(parsed.getTime())) {
+                targetDateObj = parsed;
+            }
+        }
 
-        const queryBuilder = supabase
+        // 3. Build Query
+        let queryBuilder = supabase
           .from('rides')
-          .select(`*, profiles(*), bookings(seats_booked, status)`)
+          .select(`
+            *, 
+            profiles(*), 
+            bookings(seats_booked, status)
+          `)
           .eq('status', 'scheduled')
           .gt('departure_time', now)
           .order('departure_time', { ascending: true })
-          .limit(50); // Limit to 50 for performance
+          .limit(50);
 
-        if (date) {
-            const startDate = startOfDay(new Date(date)).toISOString();
-            const endDate = endOfDay(addDays(new Date(date), 1)).toISOString();
-            queryBuilder.gte('departure_time', startDate).lte('departure_time', endDate);
+        if (date && !isNaN(new Date(date).getTime())) {
+            try {
+                const startDate = startOfDay(new Date(date)).toISOString();
+                const endDate = endOfDay(addDays(new Date(date), 1)).toISOString();
+                queryBuilder = queryBuilder.gte('departure_time', startDate).lte('departure_time', endDate);
+            } catch (e) {
+                console.warn("Date filtering error:", e);
+            }
         }
 
         const { data: allRides, error } = await queryBuilder;
-        if (error) throw error;
+        
+        if (error) {
+            console.error("Supabase Error:", error);
+            throw new Error(error.message || "Failed to fetch rides");
+        }
 
         if (allRides) {
-            // Phase 1: Fast Mathematical Filtering (The "Sieve")
+            // Phase 1: Filtering
             const initialResults = allRides.map((ride: any) => {
-                const confirmedBookings = ride.bookings?.filter((b: any) => b.status === 'confirmed') || [];
-                const bookedSeats = confirmedBookings.reduce((sum: number, b: any) => sum + b.seats_booked, 0);
-                const availableSeats = Math.max(0, ride.total_seats - bookedSeats);
+                // Safety check for bookings
+                const bookings = Array.isArray(ride.bookings) ? ride.bookings : [];
+                
+                const confirmedBookings = bookings.filter((b: any) => b.status === 'confirmed');
+                const bookedSeats = confirmedBookings.reduce((sum: number, b: any) => sum + (b.seats_booked || 0), 0);
+                const availableSeats = Math.max(0, (ride.total_seats || 4) - bookedSeats);
 
-                const match = analyzeRideMatch(ride, { pickup: finalPickup, dropoff: finalDropoff }, targetDateObj);
+                // Analyze Match
+                // Ensure we pass undefined if null to satisfy types if needed
+                const pickupParam = finalPickup || undefined;
+                const dropoffParam = finalDropoff || undefined;
+                
+                const match = analyzeRideMatch(
+                    ride, 
+                    { pickup: pickupParam, dropoff: dropoffParam }, 
+                    targetDateObj
+                );
+                
                 return { ...ride, match, availableSeats };
             }).filter((ride: SmartRideResult) => {
                 return ride.availableSeats >= passengerCount && ride.match.tier !== 'NONE';
             });
 
-            // Sort by Math Score first
+            // Sort
             initialResults.sort((a, b) => b.match.score - a.match.score);
-            
-            // Update UI immediately with Math results (Fast)
             setFilteredRides(initialResults);
 
-            // Phase 2: Intelligent Refinement (The "Polisher")
-            // We only check the top 5 results to save bandwidth/time
+            // Phase 2: Enrichment (Only if we have valid pickup coords)
             if (finalPickup && initialResults.length > 0) {
                 const topCandidates = initialResults.slice(0, 5);
                 
-                // Async update: Fetch real driving stats
                 const enrichmentPromises = topCandidates.map(async (ride) => {
                     if (ride.origin_lat && ride.origin_lng) {
                         const stats = await getDrivingStats(
@@ -140,26 +184,30 @@ export function useSmartSearch({ initialOrigin = '', initialDest = '', onToast }
                     return { id: ride.id, stats: null };
                 });
 
-                Promise.all(enrichmentPromises).then(updates => {
-                    setFilteredRides(currentRides => {
-                        return currentRides.map(ride => {
-                            const update = updates.find(u => u.id === ride.id);
-                            if (update && update.stats) {
-                                return {
-                                    ...ride,
-                                    realDrivingTime: Math.ceil(update.stats.durationSeconds / 60),
-                                    realDrivingDistance: update.stats.distanceMeters / 1000
-                                };
-                            }
-                            return ride;
+                // Handle enrichment separately so it doesn't block UI or crash
+                Promise.all(enrichmentPromises)
+                    .then(updates => {
+                        setFilteredRides(currentRides => {
+                            return currentRides.map(ride => {
+                                const update = updates.find(u => u.id === ride.id);
+                                if (update && update.stats) {
+                                    return {
+                                        ...ride,
+                                        realDrivingTime: Math.ceil(update.stats.durationSeconds / 60),
+                                        realDrivingDistance: update.stats.distanceMeters / 1000
+                                    };
+                                }
+                                return ride;
+                            });
                         });
-                    });
-                });
+                    })
+                    .catch(e => console.warn("Enrichment skipped:", e));
             }
         }
     } catch (err: any) {
-        console.error(err);
-        onToast("Search failed", 'error');
+        console.error("Search Critical Failure:", err);
+        const msg = err.message || "An unexpected error occurred";
+        onToast(msg, 'error');
     } finally {
         setLoading(false);
     }

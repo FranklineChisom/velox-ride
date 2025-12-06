@@ -324,7 +324,7 @@ export default function Home() {
                  )}
 
                  <button type="submit" className="w-full bg-black text-white py-4 rounded-xl font-bold text-lg hover:bg-slate-900 transition flex items-center justify-center gap-2 shadow-xl shadow-black/10 transform active:scale-[0.98] mt-4">
-                   See prices <ArrowRight className="w-5 h-5" />
+                   Find rides <ArrowRight className="w-5 h-5" />
                  </button>
                </form>
             </div>

@@ -29,42 +29,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStep>('PROFILE_DETAILS');
 
+  // Core Logic: Where should this user be?
   const checkAndRedirect = async (currentUser: User, currentProfile: Profile | null) => {
+    // 1. If no profile, they need to sign up again or something is wrong
     if (!currentProfile) return;
 
+    // 2. Calculate onboarding status
     const step = await AuthService.getOnboardingStatus(currentUser.id, currentProfile.role);
     setOnboardingStep(step);
 
     const isAuthPage = pathname?.startsWith('/auth');
     const isOnboardingPage = pathname?.startsWith('/onboarding');
 
-    // LOGIC FIX: 
-    // We treat 'AWAITING_APPROVAL' as "Onboarding Done" for the purpose of navigation.
-    // This allows the driver to land on /driver (where the dashboard handles the pending state).
-    const isExitAllowed = step === 'COMPLETED' || step === 'AWAITING_APPROVAL';
+    // 3. Routing Logic
+    // Status: COMPLETED or AWAITING_APPROVAL -> Go to Dashboard
+    // Status: Anything else -> Go to Onboarding
 
-    if (!isExitAllowed) {
-      // If truly incomplete (e.g. missing vehicle/docs), force /onboarding
-      if (!isOnboardingPage && !isAuthPage) {
-        router.replace('/onboarding');
-      }
-    } 
-    else {
-      // If completed OR awaiting approval, send to dashboard if they try to visit onboarding
-      if (isOnboardingPage || isAuthPage) {
-          const dashboard = currentProfile.role === 'driver' ? '/driver' : '/passenger';
-          router.replace(dashboard);
-      }
+    const isBoardingComplete = step === 'COMPLETED' || step === 'AWAITING_APPROVAL';
+
+    if (isBoardingComplete) {
+        // If they are trying to access auth or onboarding pages while done, redirect to dashboard
+        if (isAuthPage || isOnboardingPage) {
+            const dashboard = currentProfile.role === 'driver' ? '/driver' : '/passenger';
+            router.replace(dashboard);
+        }
+    } else {
+        // If they are NOT done, but trying to access other pages, force onboarding
+        // We allow /auth (so they can logout) but block everything else
+        if (!isOnboardingPage && !isAuthPage) {
+            router.replace('/onboarding');
+        }
     }
   };
 
   const refreshAuth = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user) {
-      setUser(session.user);
-      const profileData = await AuthService.getProfile(session.user.id);
-      setProfile(profileData);
-      await checkAndRedirect(session.user, profileData);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setUser(session.user);
+        // Fetch fresh profile data
+        const profileData = await AuthService.getProfile(session.user.id);
+        setProfile(profileData);
+        await checkAndRedirect(session.user, profileData);
+      } else {
+         // No session found
+         setUser(null);
+         setProfile(null);
+      }
+    } catch (error) {
+      console.error("Auth Refresh Error:", error);
     }
   };
 
@@ -75,17 +88,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        if (session?.user) {
-          setUser(session.user);
-          // Only fetch if profile is stale or missing
-          if (!profile || profile.id !== session.user.id) {
-             const p = await AuthService.getProfile(session.user.id);
-             setProfile(p);
-             await checkAndRedirect(session.user, p);
-          }
-        } else {
-          setUser(null);
-          setProfile(null);
+        if (event === 'SIGNED_OUT') {
+            setUser(null);
+            setProfile(null);
+            router.replace('/auth'); // Force redirect on signout event
+        } else if (session?.user) {
+            setUser(session.user);
+            // Re-fetch profile only if missing or user changed
+            if (!profile || profile.id !== session.user.id) {
+                 const p = await AuthService.getProfile(session.user.id);
+                 setProfile(p);
+                 await checkAndRedirect(session.user, p);
+            }
         }
         setLoading(false);
       });
@@ -96,10 +110,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [supabase, pathname]);
 
   const signOut = async () => {
+    setLoading(true);
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
     router.push('/auth');
+    setLoading(false);
   };
 
   return (
