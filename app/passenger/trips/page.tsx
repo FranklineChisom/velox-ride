@@ -21,11 +21,13 @@ export default function PassengerTripsPage() {
   // Modal for Cancel
   const [cancelModal, setCancelModal] = useState<BookingWithRide | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [userId, setUserId] = useState('');
 
   const fetchBookings = async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    setUserId(user.id);
 
     const { data } = await supabase
       .from('bookings')
@@ -48,12 +50,19 @@ export default function PassengerTripsPage() {
   const handleCancel = async () => {
     if (!cancelModal) return;
     setCancelling(true);
-    const { error } = await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', cancelModal.id);
-    if (error) addToast('Failed to cancel', 'error');
-    else {
-      addToast('Trip cancelled', 'success');
-      fetchBookings();
-      setCancelModal(null);
+    
+    const { error } = await supabase
+        .from('bookings')
+        .update({ status: 'cancelled' })
+        .eq('id', cancelModal.id);
+    
+    if (error) {
+        addToast('Failed to cancel trip', 'error');
+    } else {
+        addToast('Trip cancelled successfully', 'success');
+        // Optimistic update
+        setBookings(bookings.map(b => b.id === cancelModal.id ? { ...b, status: 'cancelled' } : b));
+        setCancelModal(null);
     }
     setCancelling(false);
   };
@@ -64,7 +73,7 @@ export default function PassengerTripsPage() {
   });
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pt-32 pb-20 px-6 max-w-4xl mx-auto">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-2xl font-bold text-slate-900">My Trips</h1>
         <div className="bg-slate-100 p-1 rounded-xl flex">
@@ -134,7 +143,7 @@ export default function PassengerTripsPage() {
 
                  {filter === 'history' && (
                     <div className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wide self-start md:self-center ${
-                       b.status === 'completed' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+                       b.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-700'
                     }`}>
                        {b.status}
                     </div>

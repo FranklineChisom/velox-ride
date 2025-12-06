@@ -14,19 +14,24 @@ export default function SupportPage() {
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [newTicket, setNewTicket] = useState({ subject: '', message: '' });
+  const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    fetchTickets();
+    const init = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            setUser(user);
+            fetchTickets(user.id);
+        }
+    };
+    init();
   }, []);
 
-  const fetchTickets = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
+  const fetchTickets = async (userId: string) => {
     const { data } = await supabase
       .from('support_tickets')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .order('created_at', { ascending: false });
     
     if (data) setTickets(data as SupportTicket[]);
@@ -34,26 +39,24 @@ export default function SupportPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTicket.subject || !newTicket.message) return;
+    if (!newTicket.subject || !newTicket.message || !user) return;
     
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
 
-    const { error } = await supabase.from('support_tickets').insert({
+    const { data, error } = await supabase.from('support_tickets').insert({
         user_id: user.id,
         subject: newTicket.subject,
         message: newTicket.message,
         status: 'open'
-    });
+    }).select().single();
 
     if (error) {
         addToast("Failed to submit ticket", 'error');
-    } else {
+    } else if (data) {
         addToast("Ticket submitted successfully", 'success');
         setShowForm(false);
         setNewTicket({ subject: '', message: '' });
-        fetchTickets();
+        setTickets(prev => [data, ...prev]); // Optimistic update
     }
     setLoading(false);
   };

@@ -254,7 +254,7 @@ export default function PassengerDashboard() {
                      <Star className="w-3 h-3 text-yellow-400 fill-current"/>
                   </div>
                   <h3 className="font-bold text-lg mb-1">Veluxe Rewards</h3>
-                  <p className="text-xs text-indigo-100 opacity-90 max-w-[80%]">Ride smart, earn points, get free rides. Launching soon.</p>
+                  <p className="text-xs text-indigo-100 opacity-90 max-w-[80%]">Ride smart, earn points, get free rides.</p>
                </div>
                <div className="absolute -right-6 -bottom-6 text-white opacity-10 rotate-12">
                   <Gift className="w-32 h-32"/>

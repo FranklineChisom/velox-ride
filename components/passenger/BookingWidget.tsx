@@ -2,12 +2,14 @@
 import { useState, useRef, useEffect } from 'react';
 import { 
   MapPin, Loader2, Navigation, Calendar, Clock, 
-  ArrowRight, ArrowUpDown, Briefcase, Home
+  ArrowRight, ArrowUpDown, Briefcase, Home, Info
 } from 'lucide-react';
-import { Suggestion, SearchHistoryItem, Coordinates, SavedPlace } from '@/types';
-import { reverseGeocode } from '@/lib/osm';
+import { Suggestion, SearchHistoryItem, Coordinates, SavedPlace, VehicleClass } from '@/types';
+import { reverseGeocode, getDrivingStats } from '@/lib/osm';
+import { calculateFare } from '@/lib/pricing';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/ToastProvider';
+import { APP_CONFIG } from '@/lib/constants';
 
 interface BookingWidgetProps {
   savedPlaces: SavedPlace[];
@@ -44,25 +46,47 @@ export default function BookingWidget({
   const [isTyping, setIsTyping] = useState(false);
   const [loadingLoc, setLoadingLoc] = useState(false);
   
+  // Dynamic Pricing State
+  const [estimatedFare, setEstimatedFare] = useState<number | null>(null);
+  const [calculatingFare, setCalculatingFare] = useState(false);
+  
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   // Initialize date/time
   useEffect(() => {
     const now = new Date();
-    // Default schedule time to next 30 min slot
     now.setMinutes(now.getMinutes() + 30);
     now.setMinutes(Math.ceil(now.getMinutes() / 30) * 30);
     setDate(now.toISOString().split('T')[0]);
     setTime(now.toTimeString().slice(0, 5));
   }, []);
 
+  // Sync with external map queries
   useEffect(() => {
     setQuery(prev => ({
       origin: externalQuery.origin || prev.origin,
       destination: externalQuery.destination || prev.destination
     }));
   }, [externalQuery]);
+
+  // Real-time Fare Calculation
+  useEffect(() => {
+    const calculate = async () => {
+        if (coords.pickup && coords.dropoff) {
+            setCalculatingFare(true);
+            const stats = await getDrivingStats(coords.pickup, coords.dropoff);
+            if (stats) {
+                const price = calculateFare(stats); // Default multiplier 1
+                setEstimatedFare(price);
+            }
+            setCalculatingFare(false);
+        } else {
+            setEstimatedFare(null);
+        }
+    };
+    calculate();
+  }, [coords.pickup, coords.dropoff]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -145,19 +169,27 @@ export default function BookingWidget({
       params.append('time', time);
       params.append('mode', 'scheduled');
     } else {
-      // Ride Now: Use current moment
+      // Ride Now
       const now = new Date();
       const dateStr = now.toISOString().split('T')[0];
       const timeStr = now.toTimeString().slice(0, 5); // HH:mm
-
       params.append('date', dateStr);
       params.append('time', timeStr);
       params.append('mode', 'instant');
+      
+      // Pass coordinates to Booking Page to avoid re-fetching
+      if (coords.pickup) {
+          params.append('pickup_lat', coords.pickup.lat.toString());
+          params.append('pickup_lng', coords.pickup.lng.toString());
+      }
+      if (coords.dropoff) {
+          params.append('dropoff_lat', coords.dropoff.lat.toString());
+          params.append('dropoff_lng', coords.dropoff.lng.toString());
+      }
     }
     router.push(`/search?${params.toString()}`);
   };
 
-  // --- Sub-component for Dropdown ---
   const Dropdown = () => (
     <div className="absolute left-0 right-0 top-full mt-2 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden z-50 animate-slide-up max-h-60 overflow-y-auto">
         {isTyping ? <div className="p-3 text-center text-xs text-slate-400 flex justify-center gap-2"><Loader2 className="w-3 h-3 animate-spin"/> Searching...</div> : (
@@ -231,6 +263,15 @@ export default function BookingWidget({
               </div>
            </div>
         )}
+
+        {/* Price Estimate Teaser */}
+        {estimatedFare && (
+           <div className="bg-green-50 border border-green-100 p-3 rounded-xl flex justify-between items-center animate-fade-in">
+               <span className="text-xs font-bold text-green-700 flex items-center gap-1"><Info className="w-3 h-3"/> Est. Price</span>
+               <span className="text-sm font-bold text-slate-900">{APP_CONFIG.currency}{estimatedFare.toLocaleString()}</span>
+           </div>
+        )}
+        {calculatingFare && <div className="text-center text-xs text-slate-400 animate-pulse">Calculating fare...</div>}
 
         <button type="submit" className="w-full bg-black text-white py-4 rounded-xl font-bold hover:bg-slate-900 transition flex items-center justify-center gap-2 shadow-lg shadow-black/10 active:scale-[0.98]">
            {activeTab === 'schedule' ? 'Find Scheduled Rides' : 'Find Available Drivers'} <ArrowRight className="w-4 h-4"/>

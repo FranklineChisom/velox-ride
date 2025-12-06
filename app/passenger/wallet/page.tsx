@@ -19,6 +19,7 @@ export default function PassengerWalletPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState('');
+  const [userId, setUserId] = useState('');
   
   // Fund Modal
   const [fundModal, setFundModal] = useState(false);
@@ -30,6 +31,7 @@ export default function PassengerWalletPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       setUserEmail(user.email || '');
+      setUserId(user.id);
 
       const { data: wallet } = await supabase.from('wallets').select('*').eq('user_id', user.id).single();
       if (wallet) {
@@ -57,21 +59,40 @@ export default function PassengerWalletPage() {
       amount: Number(amount) * 100,
       currency: 'NGN',
       onSuccess: async (tx: any) => {
-         // Optimistic UI
-         const newBal = balance + Number(amount);
-         setBalance(newBal);
-         setFundModal(false);
-         setFunding(false);
-         addToast("Wallet funded!", "success");
+         // 1. Get Wallet ID
+         const { data: wallet } = await supabase.from('wallets').select('id, balance').eq('user_id', userId).single();
          
-         // DB Update (Ideally backend verified via webhook)
-         const { data: wallet } = await supabase.from('wallets').select('id').eq('user_id', (await supabase.auth.getUser()).data.user?.id).single();
          if(wallet) {
-             await supabase.from('wallets').update({ balance: newBal }).eq('id', wallet.id);
-             await supabase.from('transactions').insert({
-                 wallet_id: wallet.id, amount: Number(amount), type: 'credit', description: 'Wallet Deposit', status: 'success', reference: tx.reference
-             });
+             const newBal = wallet.balance + Number(amount);
+             
+             // 2. Update Balance
+             const { error: walletError } = await supabase.from('wallets').update({ balance: newBal }).eq('id', wallet.id);
+             
+             if (!walletError) {
+                 // 3. Insert Transaction
+                 const { data: txRecord, error: txError } = await supabase.from('transactions').insert({
+                     wallet_id: wallet.id, 
+                     amount: Number(amount), 
+                     type: 'credit', 
+                     description: 'Wallet Deposit', 
+                     status: 'success', 
+                     reference: tx.reference
+                 }).select().single();
+
+                 if (!txError) {
+                     setBalance(newBal);
+                     if (txRecord) setTransactions([txRecord, ...transactions]);
+                     addToast("Wallet funded successfully!", "success");
+                     setFundModal(false);
+                     setAmount('');
+                 } else {
+                     addToast("Funded but failed to record transaction.", "error");
+                 }
+             } else {
+                 addToast("Failed to update wallet balance.", "error");
+             }
          }
+         setFunding(false);
       },
       onCancel: () => { setFunding(false); }
     });
@@ -80,7 +101,7 @@ export default function PassengerWalletPage() {
   if (loading) return <div className="flex justify-center items-center h-[60vh]"><Loader2 className="w-10 h-10 animate-spin text-slate-300"/></div>;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pt-32 pb-20 px-6 max-w-4xl mx-auto">
       <Script src="https://js.paystack.co/v1/inline.js" strategy="lazyOnload" />
       
       <div className="bg-black text-white p-10 rounded-[2.5rem] shadow-2xl relative overflow-hidden">
